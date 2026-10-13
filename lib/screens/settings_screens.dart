@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/services/app_services.dart';
 import '../data.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -64,8 +65,8 @@ class _NotificationSettingsScreenState
             selected: _sel == 3,
             onTap: () async {
               setState(() => _sel = 3);
-              final t = await showTimePicker(
-                  context: context, initialTime: _custom);
+              final t =
+                  await showTimePicker(context: context, initialTime: _custom);
               if (t != null) setState(() => _custom = t);
             },
           ),
@@ -79,12 +80,25 @@ class _NotificationSettingsScreenState
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
+  Future<void> _logout(BuildContext context) async {
+    try {
+      await AppServices.auth.logout();
+    } catch (_) {
+      // Offline / expired token: still log out on this device.
+    }
+    await AppServices.session.clearUser();
+    AppState.name = 'Devotee';
+    if (context.mounted) {
+      Navigator.pushNamedAndRemoveUntil(context, '/account', (r) => false);
+    }
+  }
+
   Widget _row(BuildContext context, IconData icon, String label,
       {String? value, String? route, bool danger = false}) {
     return InkWell(
       onTap: () {
         if (route == '/account') {
-          Navigator.pushNamedAndRemoveUntil(context, route!, (r) => false);
+          _logout(context);
         } else if (route != null) {
           Navigator.pushNamed(context, route);
         } else {
@@ -96,7 +110,8 @@ class ProfileScreen extends StatelessWidget {
         child: Row(
           children: [
             Icon(icon,
-                size: 21, color: danger ? Colors.red.shade700 : AppColors.maroon),
+                size: 21,
+                color: danger ? Colors.red.shade700 : AppColors.maroon),
             const SizedBox(width: 14),
             Expanded(
               child: Text(label,
@@ -224,20 +239,20 @@ class FamilySankalpScreen extends StatelessWidget {
               children: [
                 for (var i = 0; i < _members.length; i++)
                   Transform.translate(
-                      offset: Offset((i - 1.5) * 52.0, 0),
-                      child: Container(
-                        width: 62,
-                        height: 62,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _members[i].$3,
-                          border: Border.all(color: Colors.white, width: 3),
-                        ),
-                        child: Text(_members[i].$1[0],
-                            style: AppText.display(24, c: Colors.white)),
+                    offset: Offset((i - 1.5) * 52.0, 0),
+                    child: Container(
+                      width: 62,
+                      height: 62,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _members[i].$3,
+                        border: Border.all(color: Colors.white, width: 3),
                       ),
+                      child: Text(_members[i].$1[0],
+                          style: AppText.display(24, c: Colors.white)),
                     ),
+                  ),
               ],
             ),
           ),

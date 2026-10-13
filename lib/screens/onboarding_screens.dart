@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../core/services/app_services.dart';
+import '../data.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
@@ -20,10 +22,25 @@ class _SplashScreenState extends State<SplashScreen>
         vsync: this, duration: const Duration(milliseconds: 2600));
     _c.addStatusListener((s) {
       if (s == AnimationStatus.completed && mounted) {
-        Navigator.pushReplacementNamed(context, '/onboarding');
+        _goNext();
       }
     });
     _c.forward();
+  }
+
+  /// Logged in or guest -> Home. Seen intro -> Create Account. Else -> Onboarding.
+  Future<void> _goNext() async {
+    final session = AppServices.session;
+    final loggedIn = await AppServices.auth.hasSession();
+    AppState.name = session.userName ?? 'Devotee';
+
+    final next = (loggedIn || session.isGuest)
+        ? '/home'
+        : session.onboardingDone
+            ? '/account'
+            : '/onboarding';
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(context, next);
   }
 
   @override
@@ -50,8 +67,7 @@ class _SplashScreenState extends State<SplashScreen>
               const Spacer(flex: 3),
               GestureDetector(
                 onLongPress: () => Navigator.pushNamed(context, '/gallery'),
-                child: Text('ॐ',
-                    style: AppText.hindi(96, c: AppColors.maroon)),
+                child: Text('ॐ', style: AppText.hindi(96, c: AppColors.maroon)),
               ),
               const SizedBox(height: 8),
               Text('DIGITAL', style: AppText.cinzel(34)),
@@ -79,7 +95,8 @@ class _SplashScreenState extends State<SplashScreen>
                 padding: const EdgeInsets.symmetric(horizontal: 60),
                 child: AnimatedBuilder(
                   animation: _c,
-                  builder: (_, __) => GradientProgress(value: _c.value, height: 5),
+                  builder: (_, __) =>
+                      GradientProgress(value: _c.value, height: 5),
                 ),
               ),
               const SizedBox(height: 36),
@@ -126,9 +143,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
+  void _finish() {
+    AppServices.session.setOnboardingDone();
+    Navigator.pushNamed(context, '/language');
+  }
+
   void _next() {
     if (_page == _pages.length - 1) {
-      Navigator.pushNamed(context, '/language');
+      _finish();
     } else {
       _pc.nextPage(
           duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
@@ -147,9 +169,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: () => Navigator.pushNamed(context, '/language'),
-              child: Text('Skip',
-                  style: AppText.body(14, c: AppColors.muted)),
+              onPressed: _finish,
+              child: Text('Skip', style: AppText.body(14, c: AppColors.muted)),
             ),
           ),
           Expanded(
@@ -204,7 +225,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   width: i == _page ? 22 : 7,
                   height: 7,
                   decoration: BoxDecoration(
-                    color: i == _page ? AppColors.maroon : AppColors.gold.o(0.45),
+                    color:
+                        i == _page ? AppColors.maroon : AppColors.gold.o(0.45),
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
@@ -230,6 +252,7 @@ class ChooseLanguageScreen extends StatefulWidget {
 
 class _ChooseLanguageScreenState extends State<ChooseLanguageScreen> {
   int _sel = 0;
+  static const _codes = ['hi', 'en', 'pa'];
   static const _langs = [
     ('अ', 'हिंदी', 'Hindi'),
     ('A', 'English', 'English'),
@@ -243,7 +266,10 @@ class _ChooseLanguageScreenState extends State<ChooseLanguageScreen> {
       subtitle: 'अपनी भाषा चुनें',
       bottom: PrimaryButton(
           label: 'Continue',
-          onTap: () => Navigator.pushNamed(context, '/account')),
+          onTap: () {
+            AppServices.session.setLanguage(_codes[_sel]);
+            Navigator.pushNamed(context, '/account');
+          }),
       body: Column(
         children: [
           const SizedBox(height: 24),
@@ -294,14 +320,14 @@ class _ChooseLanguageScreenState extends State<ChooseLanguageScreen> {
 class CreateAccountScreen extends StatelessWidget {
   const CreateAccountScreen({super.key});
 
-  Widget _authButton(BuildContext context, IconData icon, String label,
+  Widget _authButton(
+      BuildContext context, IconData icon, String label, VoidCallback onTap,
       {Color iconColor = AppColors.ink}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DevCard(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        onTap: () => Navigator.pushNamedAndRemoveUntil(
-            context, '/home', (r) => false),
+        onTap: onTap,
         child: Row(
           children: [
             Icon(icon, color: iconColor, size: 24),
@@ -328,12 +354,19 @@ class CreateAccountScreen extends StatelessWidget {
           Text('to Digital Naam Lekhan',
               style: AppText.body(14, c: AppColors.muted)),
           const SizedBox(height: 32),
-          _authButton(context, Icons.g_mobiledata_rounded,
-              'Continue with Google',
-              iconColor: const Color(0xFFDB4437)),
-          _authButton(context, Icons.apple, 'Continue with Apple'),
           _authButton(
-              context, Icons.phone_iphone_rounded, 'Continue with Mobile',
+              context,
+              Icons.g_mobiledata_rounded,
+              'Continue with Google',
+              () => showDemoSnack(context, 'Google sign-in – coming soon'),
+              iconColor: const Color(0xFFDB4437)),
+          _authButton(context, Icons.apple, 'Continue with Apple',
+              () => showDemoSnack(context, 'Apple sign-in – coming soon')),
+          _authButton(
+              context,
+              Icons.phone_iphone_rounded,
+              'Continue with Mobile',
+              () => Navigator.pushNamed(context, '/phone'),
               iconColor: AppColors.maroon),
           const SizedBox(height: 4),
           Row(children: [
@@ -347,8 +380,11 @@ class CreateAccountScreen extends StatelessWidget {
           const SizedBox(height: 16),
           SecondaryButton(
             label: 'Continue as Guest',
-            onTap: () => Navigator.pushNamedAndRemoveUntil(
-                context, '/home', (r) => false),
+            onTap: () {
+              AppServices.session.setGuest(true);
+              AppState.name = 'Devotee';
+              Navigator.pushNamedAndRemoveUntil(context, '/home', (r) => false);
+            },
           ),
           const SizedBox(height: 40),
           Text.rich(
