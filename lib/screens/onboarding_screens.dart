@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../core/services/app_services.dart';
 import '../data.dart';
+import '../features/auth/data/auth_repository.dart';
+import '../features/auth/login_flow.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
@@ -317,8 +319,35 @@ class _ChooseLanguageScreenState extends State<ChooseLanguageScreen> {
 }
 
 // ───────────────────────── 4. CREATE ACCOUNT ─────────────────────────
-class CreateAccountScreen extends StatelessWidget {
+class CreateAccountScreen extends StatefulWidget {
   const CreateAccountScreen({super.key});
+  @override
+  State<CreateAccountScreen> createState() => _CreateAccountScreenState();
+}
+
+class _CreateAccountScreenState extends State<CreateAccountScreen> {
+  /// 'google', 'apple' or null while nothing is running.
+  String? _busyWith;
+
+  Future<void> _social(
+    String which,
+    Future<Map<String, dynamic>> Function() signIn,
+  ) async {
+    if (_busyWith != null) return;
+    setState(() => _busyWith = which);
+    try {
+      final data = await signIn();
+      if (!mounted) return;
+      await finishLogin(context, data);
+    } catch (e) {
+      // Closing the popup is not an error, so show nothing for it.
+      if (mounted && !isSignInCancelled(e)) {
+        showDemoSnack(context, authErrorMessage(e));
+      }
+    } finally {
+      if (mounted) setState(() => _busyWith = null);
+    }
+  }
 
   Widget _authButton(
       BuildContext context, IconData icon, String label, VoidCallback onTap,
@@ -357,11 +386,14 @@ class CreateAccountScreen extends StatelessWidget {
           _authButton(
               context,
               Icons.g_mobiledata_rounded,
-              'Continue with Google',
-              () => showDemoSnack(context, 'Google sign-in – coming soon'),
+              _busyWith == 'google' ? 'Signing in…' : 'Continue with Google',
+              () => _social('google', AppServices.auth.signInWithGoogle),
               iconColor: const Color(0xFFDB4437)),
-          _authButton(context, Icons.apple, 'Continue with Apple',
-              () => showDemoSnack(context, 'Apple sign-in – coming soon')),
+          _authButton(
+              context,
+              Icons.apple,
+              _busyWith == 'apple' ? 'Signing in…' : 'Continue with Apple',
+              () => _social('apple', AppServices.auth.signInWithApple)),
           _authButton(
               context,
               Icons.phone_iphone_rounded,

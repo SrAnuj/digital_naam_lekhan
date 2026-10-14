@@ -15,6 +15,16 @@ class AuthFailure implements Exception {
   String toString() => message;
 }
 
+/// True when the user closed the Google / Apple popup on purpose.
+bool isSignInCancelled(Object e) =>
+    e is FirebaseAuthException &&
+    const {
+      'popup-closed-by-user',
+      'cancelled-popup-request',
+      'web-context-canceled',
+      'canceled',
+    }.contains(e.code);
+
 /// Turns any login error (Firebase / Dio / our own) into a short message.
 String authErrorMessage(Object e) {
   // Full details in the terminal / browser console while we debug.
@@ -37,6 +47,14 @@ String authErrorMessage(Object e) {
         return 'SMS limit reached. Please try again later.';
       case 'network-request-failed':
         return 'No internet connection. Please check and retry.';
+      case 'popup-blocked':
+        return 'The sign-in popup was blocked. Allow popups and try again.';
+      case 'account-exists-with-different-credential':
+        return 'This email is already used with another sign-in method.';
+      case 'operation-not-allowed':
+        return 'This sign-in method is not enabled in Firebase yet.';
+      case 'unauthorized-domain':
+        return 'This domain is not allowed in Firebase (Authorized domains).';
       default:
         return '${e.message ?? 'Login failed'} (${e.code})';
     }
@@ -64,7 +82,8 @@ String authErrorMessage(Object e) {
   return '$text [${e.runtimeType}]';
 }
 
-/// Phone login:  Firebase OTP  ->  Firebase ID token  ->  Laravel /auth/login
+/// Phone, Google and Apple login:
+///   Firebase sign-in -> Firebase ID token -> Laravel -> Passport token
 class AuthRepository {
   AuthRepository({
     required ApiClient apiClient,
@@ -96,6 +115,8 @@ class AuthRepository {
     final t = await _tokens.read();
     return t != null && t.isNotEmpty;
   }
+
+  // ───────────────────────── phone ─────────────────────────
 
   /// [phoneNumber] must be E.164, e.g. +919876543210.
   Future<void> sendOtp(String phoneNumber, {bool resend = false}) async {
@@ -166,13 +187,57 @@ class AuthRepository {
       throw AuthFailure('Could not obtain Firebase ID token.');
     }
 
-    try {
-      final response = await _api.dio.post(
-        '/auth/login',
-        data: {'id_token': idToken},
+    return _exchange('/auth/login', idToken);
+  }
+
+  // ───────────────────────── google / apple ─────────────────────────
+
+  /// Web: popup. Android / iOS: browser sheet.
+  /// Returns the same data map as [verifyOtp].
+  Future<Map<String, dynamic>> signInWithGoogle() => _socialLogin(
+        GoogleAuthProvider()
+          ..addScope('email')
+          ..addScope('profile'),
+        '/auth/google',
       );
 
-      print("Response from /auth/login: ${response.data}");
+  Future<Map<String, dynamic>> signInWithApple() => _socialLogin(
+        AppleAuthProvider()
+          ..addScope('email')
+          ..addScope('name'),
+        '/auth/apple',
+      );
+
+  Future<Map<String, dynamic>> _socialLogin(
+    AuthProvider provider,
+    String path,
+  ) async {
+    final UserCredential result = kIsWeb
+        ? await _firebase.signInWithPopup(provider)
+        : await _firebase.signInWithProvider(provider);
+
+    final firebaseUser = result.user;
+    if (firebaseUser == null) {
+      throw AuthFailure('Sign-in failed. Please try again.');
+    }
+
+    final idToken = await firebaseUser.getIdToken(true);
+    if (idToken == null || idToken.isEmpty) {
+      throw AuthFailure('Could not obtain Firebase ID token.');
+    }
+
+    return _exchange(path, idToken);
+  }
+
+  // ───────────────────────── shared ─────────────────────────
+
+  /// Sends the Firebase ID token to Laravel and stores the access token.
+  Future<Map<String, dynamic>> _exchange(String path, String idToken) async {
+    try {
+      final response = await _api.dio.post(
+        path,
+        data: {'id_token': idToken},
+      );
 
       final body = Map<String, dynamic>.from(response.data as Map);
       final data = Map<String, dynamic>.from(body['data'] as Map);
