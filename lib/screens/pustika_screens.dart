@@ -76,7 +76,12 @@ class DigitalPustikaPreviewScreen extends StatefulWidget {
 class _DigitalPustikaPreviewScreenState
     extends State<DigitalPustikaPreviewScreen> {
   int _sel = 0;
-  static const _labels = ['Front Cover', 'First Page', 'Writing Page', 'Completion'];
+  static const _labels = [
+    'Front Cover',
+    'First Page',
+    'Writing Page',
+    'Completion'
+  ];
 
   Widget _big(Deity d) {
     switch (_sel) {
@@ -114,7 +119,8 @@ class _DigitalPustikaPreviewScreenState
         );
       case 2:
         return AspectRatio(
-            aspectRatio: 0.72, child: ExampleWritingPageBody(deity: d, page: 12));
+            aspectRatio: 0.72,
+            child: ExampleWritingPageBody(deity: d, page: 12));
       default:
         return AspectRatio(
           aspectRatio: 0.72,
@@ -192,9 +198,8 @@ class _DigitalPustikaPreviewScreenState
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: _sel == i
-                              ? AppColors.maroon
-                              : Colors.transparent,
+                          color:
+                              _sel == i ? AppColors.maroon : Colors.transparent,
                           width: 2,
                         ),
                       ),
@@ -234,7 +239,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
         label: 'Pay ₹149',
         leading: Icons.lock_rounded,
         onTap: () {
-          showDemoSnack(context, 'Payment successful (demo). Razorpay comes in Phase 4.');
+          showDemoSnack(
+              context, 'Payment successful (demo). Razorpay comes in Phase 4.');
           Navigator.pushNamed(context, '/purchases');
         },
       ),
@@ -314,14 +320,14 @@ class PurchasesScreen extends StatelessWidget {
         children: [
           Row(
             children: [
-              SizedBox(width: 56, height: 72, child: MiniPage(style: miniStyle)),
+              SizedBox(
+                  width: 56, height: 72, child: MiniPage(style: miniStyle)),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title,
-                        style: AppText.body(14, w: FontWeight.w600)),
+                    Text(title, style: AppText.body(14, w: FontWeight.w600)),
                     Text(sub, style: AppText.body(12.5)),
                     Text('Purchased: $date',
                         style: AppText.body(11, c: AppColors.muted)),
@@ -343,7 +349,8 @@ class PurchasesScreen extends StatelessWidget {
               Expanded(
                 child: PrimaryButton(
                   label: 'Download',
-                  onTap: () => showDemoSnack(context, 'Download started (demo)'),
+                  onTap: () =>
+                      showDemoSnack(context, 'Download started (demo)'),
                 ),
               ),
             ],
@@ -361,8 +368,8 @@ class PurchasesScreen extends StatelessWidget {
       body: Column(
         children: [
           const SizedBox(height: 6),
-          _item(context, '${d.en} Naam Pustika',
-              '${fmt(AppState.target)} Naam', '10 Oct 2026', 1),
+          _item(context, '${d.en} Naam Pustika', '${fmt(AppState.target)} Naam',
+              '10 Oct 2026', 1),
           _item(context, 'Completion Certificate',
               '${fmt(AppState.target)} Naam', '10 Oct 2026', 0),
         ],
@@ -375,10 +382,12 @@ class PurchasesScreen extends StatelessWidget {
 class ShareCardScreen extends StatelessWidget {
   const ShareCardScreen({super.key});
 
-  Widget _circle(BuildContext context, IconData icon, Color color, String label) {
+  Widget _circle(
+      BuildContext context, IconData icon, Color color, String label) {
     return Expanded(
       child: GestureDetector(
-        onTap: () => showDemoSnack(context, '$label – share sheet comes with share_plus'),
+        onTap: () => showDemoSnack(
+            context, '$label – share sheet comes with share_plus'),
         child: Column(
           children: [
             Container(
@@ -418,13 +427,12 @@ class ShareCardScreen extends StatelessWidget {
                 children: [
                   Text('श्री ${d.hi}', style: AppText.hindi(32)),
                   const SizedBox(height: 6),
-                  Text(fmt(AppState.target),
-                      style: AppText.display(54)),
+                  Text(fmt(AppState.target), style: AppText.display(54)),
                   Text('${d.en.toUpperCase()} NAAM\nCOMPLETED',
-                      textAlign: TextAlign.center,
-                      style: AppText.cinzel(19)),
+                      textAlign: TextAlign.center, style: AppText.cinzel(19)),
                   const SizedBox(height: 14),
-                  Text(AppState.name, style: AppText.display(18, c: AppColors.ink)),
+                  Text(AppState.name,
+                      style: AppText.display(18, c: AppColors.ink)),
                   Text('Digital Naam Lekhan',
                       style: AppText.body(11, c: AppColors.muted)),
                   const SizedBox(height: 10),

@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 class ApiConfig {
   static const String _raw = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://localhost/sankalp/api/v1',
+    defaultValue: 'https://sankalp.premierwebtechservices.com/api/v1',
   );
 
   /// On the Android emulator "localhost" is the emulator itself.

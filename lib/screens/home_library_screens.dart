@@ -7,7 +7,8 @@ import '../widgets.dart';
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
-  Widget _quick(BuildContext context, IconData icon, String label, String route) {
+  Widget _quick(
+      BuildContext context, IconData icon, String label, String route) {
     return Expanded(
       child: DevCard(
         margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -337,8 +338,8 @@ class _NaamDetailScreenState extends State<NaamDetailScreen> {
                                   Text(
                                       '"A simple digital practice\nfor your daily Sankalp."',
                                       textAlign: TextAlign.center,
-                                      style: AppText.body(12,
-                                          c: AppColors.muted)),
+                                      style:
+                                          AppText.body(12, c: AppColors.muted)),
                                 ],
                               ),
                             ),
