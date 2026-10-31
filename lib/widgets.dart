@@ -120,8 +120,8 @@ class ScreenHeader extends StatelessWidget {
                 if (subtitle != null)
                   Text(subtitle!,
                       textAlign: TextAlign.center,
-                      style: AppText.hindi(13, c: AppColors.muted,
-                          w: FontWeight.w500)),
+                      style: AppText.hindi(13,
+                          c: AppColors.muted, w: FontWeight.w500)),
               ],
             ),
           ),
@@ -185,9 +185,8 @@ class AppBottomNav extends StatelessWidget {
                     children: [
                       Icon(_items[i].$1,
                           size: 22,
-                          color: i == index
-                              ? AppColors.maroon
-                              : AppColors.muted),
+                          color:
+                              i == index ? AppColors.maroon : AppColors.muted),
                       const SizedBox(height: 2),
                       Text(_items[i].$2,
                           style: AppText.body(10.5,
@@ -253,8 +252,7 @@ class PrimaryButton extends StatelessWidget {
                 const SizedBox(width: 8),
               ],
               Text(label,
-                  style: AppText.body(15,
-                      c: Colors.white, w: FontWeight.w600)),
+                  style: AppText.body(15, c: Colors.white, w: FontWeight.w600)),
               if (trailing != null) ...[
                 const SizedBox(width: 8),
                 Icon(trailing, color: Colors.white, size: 18),
@@ -368,8 +366,11 @@ class GradientProgress extends StatelessWidget {
           widthFactor: value.clamp(0.0, 1.0),
           child: Container(
             decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                  colors: [AppColors.maroon, AppColors.saffron, AppColors.gold]),
+              gradient: LinearGradient(colors: [
+                AppColors.maroon,
+                AppColors.saffron,
+                AppColors.gold
+              ]),
             ),
           ),
         ),
@@ -426,8 +427,7 @@ class SelectTile extends StatelessWidget {
                       style: AppText.body(14.5,
                           w: selected ? FontWeight.w600 : FontWeight.w500))),
               if (trailing != null)
-                Text(trailing!,
-                    style: AppText.body(13, c: AppColors.muted)),
+                Text(trailing!, style: AppText.body(13, c: AppColors.muted)),
             ],
           ),
         ),
@@ -437,12 +437,14 @@ class SelectTile extends StatelessWidget {
 }
 
 /// Deity artwork placeholder. Drop `assets/deities/<id>.png` to override.
+
 class DeityAvatar extends StatelessWidget {
   final Deity deity;
   final double size;
   final double radius;
   final bool showLabel;
   final bool selected;
+
   const DeityAvatar({
     super.key,
     required this.deity,
@@ -454,6 +456,8 @@ class DeityAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final imageUrl = deity.imageUrl?.trim() ?? '';
+
     final art = ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: Container(
@@ -461,7 +465,11 @@ class DeityAvatar extends StatelessWidget {
         height: size,
         decoration: BoxDecoration(
           gradient: RadialGradient(
-            colors: [Colors.white.o(0.9), deity.c1, deity.c2],
+            colors: [
+              Colors.white.o(0.9),
+              deity.c1,
+              deity.c2,
+            ],
             stops: const [0.0, 0.5, 1.0],
           ),
         ),
@@ -469,16 +477,34 @@ class DeityAvatar extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             Center(
-                child: Text(deity.symbol, style: TextStyle(fontSize: size * 0.42))),
-            Image.asset(
-              'assets/deities/${deity.id}.png',
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              child: Text(
+                deity.symbol,
+                style: TextStyle(fontSize: size * 0.42),
+              ),
             ),
+
+            // Load the deity image dynamically from the Laravel API.
+            if (imageUrl.isNotEmpty)
+              Image.network(
+                imageUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  debugPrint(
+                    'Deity image failed to load: $imageUrl, error: $error',
+                  );
+                  return Center(
+                    child: Text(
+                      deity.symbol,
+                      style: TextStyle(fontSize: size * 0.42),
+                    ),
+                  );
+                },
+              ),
           ],
         ),
       ),
     );
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -487,15 +513,18 @@ class DeityAvatar extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(radius + 2),
             border: Border.all(
-                color: selected ? AppColors.maroon : AppColors.gold,
-                width: selected ? 2.2 : 1.2),
+              color: selected ? AppColors.maroon : AppColors.gold,
+              width: selected ? 2.2 : 1.2,
+            ),
           ),
           child: art,
         ),
         if (showLabel) ...[
           const SizedBox(height: 6),
-          Text(deity.hi,
-              style: AppText.hindi(14, c: AppColors.maroon)),
+          Text(
+            deity.hi,
+            style: AppText.hindi(14, c: AppColors.maroon),
+          ),
         ],
       ],
     );
@@ -548,76 +577,160 @@ class OrnateFrame extends StatelessWidget {
 }
 
 /// Scalable Pustika cover. Width drives all sizes.
+
 class PustikaCover extends StatelessWidget {
   final Deity deity;
   final String name;
   final int count;
   final String title;
+  final String? designImageUrl;
+
   const PustikaCover({
     super.key,
     required this.deity,
     required this.name,
     required this.count,
     this.title = 'नाम लेखन पुस्तिका',
+    this.designImageUrl,
   });
+
+  Widget _buildDefaultCover(double k) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(5 * k),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFFFFF6DE),
+            Color(0xFFF6DDA2),
+          ],
+        ),
+      ),
+      padding: EdgeInsets.symmetric(
+        horizontal: 8 * k,
+        vertical: 10 * k,
+      ),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: SizedBox(
+          width: 170 * k,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'ॐ',
+                style: AppText.hindi(
+                  26 * k,
+                  c: AppColors.gold,
+                ),
+              ),
+              Text(
+                'श्री ${deity.hi}',
+                style: AppText.hindi(
+                  34 * k,
+                  c: AppColors.maroon,
+                ),
+              ),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: AppText.hindi(
+                  12 * k,
+                  c: AppColors.maroon,
+                  w: FontWeight.w600,
+                ),
+              ),
+              SizedBox(height: 8 * k),
+              Icon(
+                Icons.temple_hindu_rounded,
+                size: 54 * k,
+                color: AppColors.gold,
+              ),
+              SizedBox(height: 8 * k),
+              Text(
+                'Created for',
+                style: AppText.body(
+                  8.5 * k,
+                  c: AppColors.muted,
+                ),
+              ),
+              Text(
+                name,
+                style: AppText.display(
+                  14 * k,
+                  c: AppColors.maroon,
+                ),
+              ),
+              SizedBox(height: 4 * k),
+              Text(
+                'Sankalp',
+                style: AppText.body(
+                  8.5 * k,
+                  c: AppColors.muted,
+                ),
+              ),
+              Text(
+                '${fmt(count)} Naam',
+                style: AppText.display(
+                  13 * k,
+                  c: AppColors.maroon,
+                ),
+              ),
+              SizedBox(height: 6 * k),
+              Icon(
+                Icons.spa_rounded,
+                size: 26 * k,
+                color: AppColors.saffron,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, c) {
-      final k = (c.maxWidth.isFinite ? c.maxWidth : 200) / 200;
-      return AspectRatio(
-        aspectRatio: 0.72,
-        child: OrnateFrame(
-          scale: k,
-          child: Container(
-            decoration: BoxDecoration(
+    return LayoutBuilder(
+      builder: (context, c) {
+        final k = (c.maxWidth.isFinite ? c.maxWidth : 200) / 200;
+
+        final imageUrl = designImageUrl?.trim() ?? '';
+
+        return AspectRatio(
+          aspectRatio: 0.72,
+          child: OrnateFrame(
+            scale: k,
+            child: ClipRRect(
               borderRadius: BorderRadius.circular(5 * k),
-              gradient: const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFFFFF6DE), Color(0xFFF6DDA2)],
-              ),
-            ),
-            padding: EdgeInsets.symmetric(horizontal: 8 * k, vertical: 10 * k),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: SizedBox(
-                width: 170 * k,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('ॐ',
-                        style: AppText.hindi(26 * k, c: AppColors.gold)),
-                    Text('श्री ${deity.hi}',
-                        style: AppText.hindi(34 * k, c: AppColors.maroon)),
-                    Text(title,
-                        textAlign: TextAlign.center,
-                        style: AppText.hindi(12 * k,
-                            c: AppColors.maroon, w: FontWeight.w600)),
-                    SizedBox(height: 8 * k),
-                    Icon(Icons.temple_hindu_rounded,
-                        size: 54 * k, color: AppColors.gold),
-                    SizedBox(height: 8 * k),
-                    Text('Created for',
-                        style: AppText.body(8.5 * k, c: AppColors.muted)),
-                    Text(name,
-                        style: AppText.display(14 * k, c: AppColors.maroon)),
-                    SizedBox(height: 4 * k),
-                    Text('Sankalp',
-                        style: AppText.body(8.5 * k, c: AppColors.muted)),
-                    Text('${fmt(count)} Naam',
-                        style: AppText.display(13 * k, c: AppColors.maroon)),
-                    SizedBox(height: 6 * k),
-                    Icon(Icons.spa_rounded,
-                        size: 26 * k, color: AppColors.saffron),
-                  ],
-                ),
-              ),
+              child: imageUrl.isEmpty
+                  ? _buildDefaultCover(k)
+                  : Image.network(
+                      imageUrl,
+                      width: double.infinity,
+                      height: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return _buildDefaultCover(k);
+                      },
+                      loadingBuilder: (
+                        context,
+                        child,
+                        loadingProgress,
+                      ) {
+                        if (loadingProgress == null) {
+                          return child;
+                        }
+
+                        return _buildDefaultCover(k);
+                      },
+                    ),
             ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   }
 }
 

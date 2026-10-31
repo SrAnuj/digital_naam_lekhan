@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
+
 import '../data.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'sankalp_setup_screens.dart' show MiniPage;
 
 // ───────────────────────── 18. COMPLETION SCREEN ─────────────────────────
+
 class CompletionScreen extends StatelessWidget {
   const CompletionScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final d = AppState.deity;
+
     return DevScaffold(
       showBack: true,
       bottom: Column(
@@ -32,30 +35,44 @@ class CompletionScreen extends StatelessWidget {
       body: Column(
         children: [
           const SizedBox(height: 10),
-          Icon(Icons.celebration_rounded, size: 40, color: AppColors.saffron),
+          Icon(
+            Icons.celebration_rounded,
+            size: 40,
+            color: AppColors.saffron,
+          ),
           const SizedBox(height: 6),
           Text('Sankalp Completed', style: AppText.display(26)),
           const SizedBox(height: 18),
-          Text('श्री ${d.hi}', style: AppText.hindi(44)),
+          Text(
+            d == null ? 'नाम लेखन' : 'श्री ${d.hi}',
+            style: AppText.hindi(44),
+          ),
           const SizedBox(height: 4),
           Text(fmt(AppState.target), style: AppText.display(56)),
-          Text('Naam Written',
-              style: AppText.display(18, c: AppColors.maroonDark)),
+          Text(
+            'Naam Written',
+            style: AppText.display(18, c: AppColors.maroonDark),
+          ),
           const SizedBox(height: 8),
-          Text('10 October 2026',
-              style: AppText.body(12.5, c: AppColors.muted)),
+          Text(
+            '10 October 2026',
+            style: AppText.body(12.5, c: AppColors.muted),
+          ),
           const SizedBox(height: 22),
           DevCard(
             color: AppColors.creamDark.o(0.5),
             child: Column(
               children: [
-                Text('🙏  Congratulations  🙏',
-                    style: AppText.display(18, c: AppColors.maroon)),
+                Text(
+                  '🙏  Congratulations  🙏',
+                  style: AppText.display(18, c: AppColors.maroon),
+                ),
                 const SizedBox(height: 6),
                 Text(
-                    'Would you like to create a Naam Pustika for someone you love?',
-                    textAlign: TextAlign.center,
-                    style: AppText.body(12.5, c: AppColors.muted)),
+                  'Would you like to create a Naam Pustika for someone you love?',
+                  textAlign: TextAlign.center,
+                  style: AppText.body(12.5, c: AppColors.muted),
+                ),
               ],
             ),
           ),
@@ -66,8 +83,10 @@ class CompletionScreen extends StatelessWidget {
 }
 
 // ───────────────────────── 19. DIGITAL PUSTIKA PREVIEW ─────────────────────────
+
 class DigitalPustikaPreviewScreen extends StatefulWidget {
   const DigitalPustikaPreviewScreen({super.key});
+
   @override
   State<DigitalPustikaPreviewScreen> createState() =>
       _DigitalPustikaPreviewScreenState();
@@ -76,21 +95,24 @@ class DigitalPustikaPreviewScreen extends StatefulWidget {
 class _DigitalPustikaPreviewScreenState
     extends State<DigitalPustikaPreviewScreen> {
   int _sel = 0;
+
   static const _labels = [
     'Front Cover',
     'First Page',
     'Writing Page',
-    'Completion'
+    'Completion',
   ];
 
   Widget _big(Deity d) {
     switch (_sel) {
       case 0:
         return PustikaCover(
-            deity: d,
-            name: AppState.name,
-            count: AppState.target,
-            title: '${d.hi} नाम लेखन पुस्तिका');
+          deity: d,
+          name: AppState.name,
+          count: AppState.target,
+          title: '${d.hi} नाम लेखन पुस्तिका',
+        );
+
       case 1:
         return AspectRatio(
           aspectRatio: 0.72,
@@ -103,24 +125,35 @@ class _DigitalPustikaPreviewScreenState
                   children: [
                     Text('सप्रेम भेंट', style: AppText.hindi(22)),
                     const SizedBox(height: 10),
-                    Text('मेरी माँ के लिए',
-                        style: AppText.hindi(18, c: AppColors.ink)),
+                    Text(
+                      'मेरी माँ के लिए',
+                      style: AppText.hindi(18, c: AppColors.ink),
+                    ),
                     const SizedBox(height: 14),
-                    Icon(Icons.spa_rounded, color: AppColors.saffron, size: 40),
+                    Icon(
+                      Icons.spa_rounded,
+                      color: AppColors.saffron,
+                      size: 40,
+                    ),
                     const SizedBox(height: 14),
-                    Text('प्रेम सहित — ${AppState.name}',
-                        textAlign: TextAlign.center,
-                        style: AppText.hindi(15, c: AppColors.maroon)),
+                    Text(
+                      'प्रेम सहित — ${AppState.name}',
+                      textAlign: TextAlign.center,
+                      style: AppText.hindi(15, c: AppColors.maroon),
+                    ),
                   ],
                 ),
               ),
             ),
           ),
         );
+
       case 2:
         return AspectRatio(
-            aspectRatio: 0.72,
-            child: ExampleWritingPageBody(deity: d, page: 12));
+          aspectRatio: 0.72,
+          child: ExampleWritingPageBody(deity: d, page: 12),
+        );
+
       default:
         return AspectRatio(
           aspectRatio: 0.72,
@@ -131,17 +164,26 @@ class _DigitalPustikaPreviewScreenState
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.verified_rounded,
-                        color: AppColors.gold, size: 48),
+                    Icon(
+                      Icons.verified_rounded,
+                      color: AppColors.gold,
+                      size: 48,
+                    ),
                     const SizedBox(height: 10),
-                    Text('Completion Certificate',
-                        textAlign: TextAlign.center,
-                        style: AppText.display(18)),
+                    Text(
+                      'Completion Certificate',
+                      textAlign: TextAlign.center,
+                      style: AppText.display(18),
+                    ),
                     const SizedBox(height: 8),
-                    Text('${fmt(AppState.target)} ${d.hi} Naam',
-                        style: AppText.hindi(16, c: AppColors.ink)),
-                    Text('Completed by ${AppState.name}',
-                        style: AppText.body(12, c: AppColors.muted)),
+                    Text(
+                      '${fmt(AppState.target)} ${d.hi} Naam',
+                      style: AppText.hindi(16, c: AppColors.ink),
+                    ),
+                    Text(
+                      'Completed by ${AppState.name}',
+                      style: AppText.body(12, c: AppColors.muted),
+                    ),
                   ],
                 ),
               ),
@@ -154,6 +196,7 @@ class _DigitalPustikaPreviewScreenState
   @override
   Widget build(BuildContext context) {
     final d = AppState.deity;
+
     return DevScaffold(
       title: 'Digital Pustika Preview',
       bottom: Row(
@@ -179,11 +222,14 @@ class _DigitalPustikaPreviewScreenState
           Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 250),
-              child: _big(d),
+              child: d == null ? _deityNotSelected() : _big(d),
             ),
           ),
           const SizedBox(height: 10),
-          Text(_labels[_sel], style: AppText.body(12.5, c: AppColors.muted)),
+          Text(
+            _labels[_sel],
+            style: AppText.body(12.5, c: AppColors.muted),
+          ),
           const SizedBox(height: 14),
           Row(
             children: [
@@ -203,7 +249,9 @@ class _DigitalPustikaPreviewScreenState
                           width: 2,
                         ),
                       ),
-                      child: MiniPage(style: i == 0 ? 2 : (i == 2 ? 1 : 0)),
+                      child: MiniPage(
+                        style: i == 0 ? 2 : (i == 2 ? 1 : 0),
+                      ),
                     ),
                   ),
                 ),
@@ -216,14 +264,17 @@ class _DigitalPustikaPreviewScreenState
 }
 
 // ───────────────────────── 20. PAYMENT ─────────────────────────
+
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key});
+
   @override
   State<PaymentScreen> createState() => _PaymentScreenState();
 }
 
 class _PaymentScreenState extends State<PaymentScreen> {
   int _method = 0;
+
   static const _methods = [
     (Icons.account_balance_wallet_rounded, 'UPI'),
     (Icons.credit_card_rounded, 'Cards'),
@@ -240,7 +291,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
         leading: Icons.lock_rounded,
         onTap: () {
           showDemoSnack(
-              context, 'Payment successful (demo). Razorpay comes in Phase 4.');
+            context,
+            'Payment successful (demo). Razorpay comes in Phase 4.',
+          );
           Navigator.pushNamed(context, '/purchases');
         },
       ),
@@ -251,9 +304,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Digital Naam Pustika', style: AppText.display(18)),
+                Text(
+                  'Digital Naam Pustika',
+                  style: AppText.display(18),
+                ),
                 const SizedBox(height: 10),
-                for (final f in [
+                for (final feature in [
                   '${fmt(AppState.target)} Naam',
                   'Personalized Cover',
                   'All Writing Pages',
@@ -264,10 +320,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 3),
                     child: Row(
                       children: [
-                        Icon(Icons.check_circle_rounded,
-                            size: 17, color: AppColors.gold),
+                        Icon(
+                          Icons.check_circle_rounded,
+                          size: 17,
+                          color: AppColors.gold,
+                        ),
                         const SizedBox(width: 8),
-                        Text(f, style: AppText.body(13)),
+                        Text(feature, style: AppText.body(13)),
                       ],
                     ),
                   ),
@@ -280,25 +339,37 @@ class _PaymentScreenState extends State<PaymentScreen> {
             ),
           ),
           const SizedBox(height: 18),
-          Text('Pay with', style: AppText.body(13, c: AppColors.muted)),
+          Text(
+            'Pay with',
+            style: AppText.body(13, c: AppColors.muted),
+          ),
           const SizedBox(height: 8),
           for (var i = 0; i < _methods.length; i++)
             SelectTile(
               label: _methods[i].$2,
               selected: _method == i,
               onTap: () => setState(() => _method = i),
-              leading: Icon(_methods[i].$1, color: AppColors.maroon, size: 20),
+              leading: Icon(
+                _methods[i].$1,
+                color: AppColors.maroon,
+                size: 20,
+              ),
             ),
           const SizedBox(height: 8),
           Center(
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.verified_user_rounded,
-                    size: 15, color: AppColors.success),
+                const Icon(
+                  Icons.verified_user_rounded,
+                  size: 15,
+                  color: AppColors.success,
+                ),
                 const SizedBox(width: 6),
-                Text('Razorpay Secured Payment',
-                    style: AppText.body(11.5, c: AppColors.muted)),
+                Text(
+                  'Razorpay Secured Payment',
+                  style: AppText.body(11.5, c: AppColors.muted),
+                ),
               ],
             ),
           ),
@@ -309,11 +380,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
 }
 
 // ───────────────────────── 21. PURCHASES / DOWNLOADS ─────────────────────────
+
 class PurchasesScreen extends StatelessWidget {
   const PurchasesScreen({super.key});
 
-  Widget _item(BuildContext context, String title, String sub, String date,
-      int miniStyle) {
+  Widget _item(
+    BuildContext context,
+    String title,
+    String sub,
+    String date,
+    int miniStyle,
+  ) {
     return DevCard(
       margin: const EdgeInsets.only(bottom: 14),
       child: Column(
@@ -321,16 +398,24 @@ class PurchasesScreen extends StatelessWidget {
           Row(
             children: [
               SizedBox(
-                  width: 56, height: 72, child: MiniPage(style: miniStyle)),
+                width: 56,
+                height: 72,
+                child: MiniPage(style: miniStyle),
+              ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: AppText.body(14, w: FontWeight.w600)),
+                    Text(
+                      title,
+                      style: AppText.body(14, w: FontWeight.w600),
+                    ),
                     Text(sub, style: AppText.body(12.5)),
-                    Text('Purchased: $date',
-                        style: AppText.body(11, c: AppColors.muted)),
+                    Text(
+                      'Purchased: $date',
+                      style: AppText.body(11, c: AppColors.muted),
+                    ),
                   ],
                 ),
               ),
@@ -363,15 +448,26 @@ class PurchasesScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = AppState.deity;
+
     return DevScaffold(
       title: 'My Digital Products',
       body: Column(
         children: [
           const SizedBox(height: 6),
-          _item(context, '${d.en} Naam Pustika', '${fmt(AppState.target)} Naam',
-              '10 Oct 2026', 1),
-          _item(context, 'Completion Certificate',
-              '${fmt(AppState.target)} Naam', '10 Oct 2026', 0),
+          _item(
+            context,
+            '${d?.en ?? 'Naam'} Naam Pustika',
+            '${fmt(AppState.target)} Naam',
+            '10 Oct 2026',
+            1,
+          ),
+          _item(
+            context,
+            'Completion Certificate',
+            '${fmt(AppState.target)} Naam',
+            '10 Oct 2026',
+            0,
+          ),
         ],
       ),
     );
@@ -379,25 +475,38 @@ class PurchasesScreen extends StatelessWidget {
 }
 
 // ───────────────────────── 22. SHARE CARD ─────────────────────────
+
 class ShareCardScreen extends StatelessWidget {
   const ShareCardScreen({super.key});
 
   Widget _circle(
-      BuildContext context, IconData icon, Color color, String label) {
+    BuildContext context,
+    IconData icon,
+    Color color,
+    String label,
+  ) {
     return Expanded(
       child: GestureDetector(
         onTap: () => showDemoSnack(
-            context, '$label – share sheet comes with share_plus'),
+          context,
+          '$label – share sheet comes with share_plus',
+        ),
         child: Column(
           children: [
             Container(
               width: 54,
               height: 54,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+              ),
               child: Icon(icon, color: Colors.white, size: 28),
             ),
             const SizedBox(height: 6),
-            Text(label, style: AppText.body(11.5, w: FontWeight.w500)),
+            Text(
+              label,
+              style: AppText.body(11.5, w: FontWeight.w500),
+            ),
           ],
         ),
       ),
@@ -407,6 +516,7 @@ class ShareCardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = AppState.deity;
+
     return DevScaffold(
       title: 'Share Card',
       body: Column(
@@ -415,28 +525,51 @@ class ShareCardScreen extends StatelessWidget {
           OrnateFrame(
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 16),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
+              padding: const EdgeInsets.symmetric(
+                vertical: 26,
+                horizontal: 16,
+              ),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Color(0xFFFFF6DE), Color(0xFFF4D890)],
+                  colors: [
+                    Color(0xFFFFF6DE),
+                    Color(0xFFF4D890),
+                  ],
                 ),
               ),
               child: Column(
                 children: [
-                  Text('श्री ${d.hi}', style: AppText.hindi(32)),
+                  Text(
+                    d == null ? 'नाम लेखन' : 'श्री ${d.hi}',
+                    style: AppText.hindi(32),
+                  ),
                   const SizedBox(height: 6),
-                  Text(fmt(AppState.target), style: AppText.display(54)),
-                  Text('${d.en.toUpperCase()} NAAM\nCOMPLETED',
-                      textAlign: TextAlign.center, style: AppText.cinzel(19)),
+                  Text(
+                    fmt(AppState.target),
+                    style: AppText.display(54),
+                  ),
+                  Text(
+                    '${d?.en.toUpperCase() ?? 'NAAM'} NAAM\nCOMPLETED',
+                    textAlign: TextAlign.center,
+                    style: AppText.cinzel(19),
+                  ),
                   const SizedBox(height: 14),
-                  Text(AppState.name,
-                      style: AppText.display(18, c: AppColors.ink)),
-                  Text('Digital Naam Lekhan',
-                      style: AppText.body(11, c: AppColors.muted)),
+                  Text(
+                    AppState.name,
+                    style: AppText.display(18, c: AppColors.ink),
+                  ),
+                  Text(
+                    'Digital Naam Lekhan',
+                    style: AppText.body(11, c: AppColors.muted),
+                  ),
                   const SizedBox(height: 10),
-                  Icon(Icons.spa_rounded, color: AppColors.saffron, size: 36),
+                  Icon(
+                    Icons.spa_rounded,
+                    color: AppColors.saffron,
+                    size: 36,
+                  ),
                 ],
               ),
             ),
@@ -444,12 +577,24 @@ class ShareCardScreen extends StatelessWidget {
           const SizedBox(height: 26),
           Row(
             children: [
-              _circle(context, Icons.chat_rounded, const Color(0xFF25D366),
-                  'WhatsApp'),
-              _circle(context, Icons.camera_alt_rounded,
-                  const Color(0xFFC13584), 'Instagram'),
-              _circle(context, Icons.download_rounded, AppColors.maroon,
-                  'Download'),
+              _circle(
+                context,
+                Icons.chat_rounded,
+                const Color(0xFF25D366),
+                'WhatsApp',
+              ),
+              _circle(
+                context,
+                Icons.camera_alt_rounded,
+                const Color(0xFFC13584),
+                'Instagram',
+              ),
+              _circle(
+                context,
+                Icons.download_rounded,
+                AppColors.maroon,
+                'Download',
+              ),
             ],
           ),
         ],
@@ -459,11 +604,16 @@ class ShareCardScreen extends StatelessWidget {
 }
 
 // ───────────────────────── 25. EXAMPLE WRITING PAGE ─────────────────────────
+
 class ExampleWritingPageBody extends StatelessWidget {
   final Deity deity;
   final int page;
-  const ExampleWritingPageBody(
-      {super.key, required this.deity, required this.page});
+
+  const ExampleWritingPageBody({
+    super.key,
+    required this.deity,
+    required this.page,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -472,8 +622,10 @@ class ExampleWritingPageBody extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
         child: Column(
           children: [
-            Text('श्री ${deity.hi}',
-                style: AppText.hindi(16, c: AppColors.maroon)),
+            Text(
+              'श्री ${deity.hi}',
+              style: AppText.hindi(16, c: AppColors.maroon),
+            ),
             const SizedBox(height: 4),
             Expanded(
               child: Column(
@@ -486,10 +638,14 @@ class ExampleWritingPageBody extends StatelessWidget {
                             Expanded(
                               child: Center(
                                 child: FittedBox(
-                                  child: Text(deity.hi,
-                                      style: AppText.hindi(14,
-                                          c: AppColors.ink,
-                                          w: FontWeight.w500)),
+                                  child: Text(
+                                    deity.hi,
+                                    style: AppText.hindi(
+                                      14,
+                                      c: AppColors.ink,
+                                      w: FontWeight.w500,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
@@ -499,8 +655,10 @@ class ExampleWritingPageBody extends StatelessWidget {
                 ],
               ),
             ),
-            Text('Page $page / 250',
-                style: AppText.body(9.5, c: AppColors.muted)),
+            Text(
+              'Page $page / 250',
+              style: AppText.body(9.5, c: AppColors.muted),
+            ),
           ],
         ),
       ),
@@ -508,16 +666,128 @@ class ExampleWritingPageBody extends StatelessWidget {
   }
 }
 
-class ExampleWritingPageScreen extends StatelessWidget {
+
+class ExampleWritingPageScreen extends StatefulWidget {
   const ExampleWritingPageScreen({super.key});
 
   @override
+  State<ExampleWritingPageScreen> createState() =>
+      _ExampleWritingPageScreenState();
+}
+
+class _ExampleWritingPageScreenState
+    extends State<ExampleWritingPageScreen> {
+  int _page = 1;
+
+  static const int _totalPages = 5;
+
+  void _previousPage() {
+    if (_page <= 1) return;
+
+    setState(() {
+      _page--;
+    });
+  }
+
+  void _nextPage() {
+    if (_page >= _totalPages) return;
+
+    setState(() {
+      _page++;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final d = AppState.deity;
+
     return DevScaffold(
       title: 'Example Writing Page',
       scroll: false,
       padding: const EdgeInsets.fromLTRB(28, 8, 28, 24),
-      body: ExampleWritingPageBody(deity: AppState.deity, page: 12),
+      body: d == null
+          ? _deityNotSelected()
+          : Column(
+              children: [
+                Expanded(
+                  child: ExampleWritingPageBody(
+                    deity: d,
+                    page: _page,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SecondaryButton(
+                        label: 'Previous',
+                        onTap: _previousPage,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      '$_page / $_totalPages',
+                      style: AppText.body(
+                        13,
+                        c: AppColors.maroon,
+                        w: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: PrimaryButton(
+                        label: 'Next',
+                        trailing: Icons.arrow_forward_rounded,
+                        onTap: _nextPage,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
     );
   }
+}
+
+// ───────────────────────── SHARED EMPTY STATE ─────────────────────────
+
+Widget _deityNotSelected() {
+  return AspectRatio(
+    aspectRatio: 0.72,
+    child: OrnateFrame(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.menu_book_rounded,
+                size: 42,
+                color: AppColors.maroon,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Naam not selected',
+                textAlign: TextAlign.center,
+                style: AppText.display(
+                  18,
+                  c: AppColors.maroon,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Please select a Naam before viewing your Pustika.',
+                textAlign: TextAlign.center,
+                style: AppText.body(
+                  12.5,
+                  c: AppColors.muted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }
