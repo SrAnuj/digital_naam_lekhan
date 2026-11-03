@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import '../core/services/app_services.dart';
+import '../core/services/notification_service.dart';
 import '../data.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
 // ───────────────────────── 17. NOTIFICATION SETTINGS ─────────────────────────
+
 class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({super.key});
+
   @override
   State<NotificationSettingsScreen> createState() =>
       _NotificationSettingsScreenState();
@@ -17,17 +20,210 @@ class _NotificationSettingsScreenState
   int _sel = 0;
   TimeOfDay _custom = const TimeOfDay(hour: 21, minute: 0);
 
+  bool _isLoading = true;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedReminder();
+  }
+
+  // Load reminder from Laravel API first.
+  // If API fails, use existing local SharedPreferences data.
+  Future<void> _loadSavedReminder() async {
+    try {
+      final response = await AppServices.api.dio.get('/reminders');
+
+      final responseData = response.data;
+
+      if (responseData is Map && responseData['success'] == true) {
+        final data = responseData['data'];
+
+        if (data is List && data.isNotEmpty && data.first is Map) {
+          final reminder = data.first as Map;
+
+          final reminderTime = reminder['reminder_time']?.toString();
+
+          if (reminderTime != null && reminderTime.contains(':')) {
+            final parts = reminderTime.split(':');
+
+            final hour = int.tryParse(parts[0]);
+            final minute = int.tryParse(parts[1]);
+
+            if (hour != null &&
+                minute != null &&
+                hour >= 0 &&
+                hour <= 23 &&
+                minute >= 0 &&
+                minute <= 59) {
+              if (!mounted) return;
+
+              setState(() {
+                _setSelectedTime(hour, minute);
+                _isLoading = false;
+              });
+
+              return;
+            }
+          }
+        }
+      }
+
+      // API response invalid or empty: use local fallback.
+      await _loadLocalReminder();
+    } catch (e) {
+      // API unavailable: use locally saved reminder.
+      await _loadLocalReminder();
+    }
+  }
+
+  // Load reminder from local storage.
+  Future<void> _loadLocalReminder() async {
+    try {
+      final saved = await NotificationService.instance.getSavedReminder();
+
+      if (!mounted) return;
+
+      setState(() {
+        _sel = saved['selection'] as int? ?? 0;
+
+        _custom = TimeOfDay(
+          hour: saved['hour'] as int? ?? 21,
+          minute: saved['minute'] as int? ?? 0,
+        );
+
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  // Match API time with existing UI options.
+  void _setSelectedTime(int hour, int minute) {
+    if (hour == 7 && minute == 0) {
+      _sel = 0;
+    } else if (hour == 12 && minute == 0) {
+      _sel = 1;
+    } else if (hour == 19 && minute == 0) {
+      _sel = 2;
+    } else {
+      _sel = 3;
+      _custom = TimeOfDay(hour: hour, minute: minute);
+    }
+  }
+
+  // Save reminder to Laravel first, then schedule local notification.
+  Future<void> _saveReminder() async {
+    if (_isSaving || _isLoading) return;
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    int hour;
+    int minute;
+
+    switch (_sel) {
+      case 0:
+        hour = 7;
+        minute = 0;
+        break;
+
+      case 1:
+        hour = 12;
+        minute = 0;
+        break;
+
+      case 2:
+        hour = 19;
+        minute = 0;
+        break;
+
+      case 3:
+        hour = _custom.hour;
+        minute = _custom.minute;
+        break;
+
+      default:
+        hour = 7;
+        minute = 0;
+    }
+
+    try {
+      // Format required by Laravel: HH:mm
+      final reminderTime = '${hour.toString().padLeft(2, '0')}:'
+          '${minute.toString().padLeft(2, '0')}';
+
+      // Step 1: Save reminder settings in Laravel.
+      final response = await AppServices.api.dio.put(
+        '/reminders',
+        data: {
+          'reminder_time': reminderTime,
+          'timezone': 'Asia/Kolkata',
+          'is_enabled': true,
+        },
+      );
+
+      // debugPrint('REMINDER API STATUS: ${response.statusCode}');
+      // debugPrint('REMINDER API TYPE: ${response.data.runtimeType}');
+      // debugPrint('REMINDER API RESPONSE: ${response.data}');
+
+      final responseData = response.data;
+
+      if (responseData is! Map || responseData['success'] != true) {
+        throw Exception(
+          'Reminder API returned unexpected response: $responseData',
+        );
+      }
+
+      // Step 2: Schedule local notification only after API success.
+      final localSuccess = await NotificationService.instance.saveDailyReminder(
+        selection: _sel,
+        hour: hour,
+        minute: minute,
+      );
+
+      if (!mounted) return;
+
+      if (localSuccess) {
+        showDemoSnack(context, 'Daily reminder saved 🙏');
+        Navigator.maybePop(context);
+      } else {
+        showDemoSnack(
+          context,
+          'Reminder saved on server, but notifications are not allowed on this device. Please enable notification permission.',
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      showDemoSnack(
+        context,
+        'Unable to save reminder. Please check your internet connection and try again.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return DevScaffold(
       title: 'Daily Reminder',
       subtitle: 'दैनिक समय',
       bottom: PrimaryButton(
-        label: 'Save Reminder',
-        onTap: () {
-          showDemoSnack(context, 'Reminder saved 🙏');
-          Navigator.maybePop(context);
-        },
+        label: _isSaving ? 'Saving...' : 'Save Reminder',
+        onTap: _isSaving || _isLoading ? () {} : _saveReminder,
       ),
       body: Column(
         children: [
@@ -39,35 +235,53 @@ class _NotificationSettingsScreenState
               shape: BoxShape.circle,
               color: AppColors.goldLight.o(0.35),
             ),
-            child: Icon(Icons.notifications_active_rounded,
-                size: 44, color: AppColors.maroon),
+            child: Icon(
+              Icons.notifications_active_rounded,
+              size: 44,
+              color: AppColors.maroon,
+            ),
           ),
           const SizedBox(height: 12),
-          Text('A gentle reminder to write your Naam each day.',
-              textAlign: TextAlign.center,
-              style: AppText.body(12.5, c: AppColors.muted)),
+          Text(
+            'A gentle reminder to write your Naam each day.',
+            textAlign: TextAlign.center,
+            style: AppText.body(
+              12.5,
+              c: AppColors.muted,
+            ),
+          ),
           const SizedBox(height: 22),
           SelectTile(
-              label: 'Morning – 7:00 AM',
-              selected: _sel == 0,
-              onTap: () => setState(() => _sel = 0)),
+            label: 'Morning – 7:00 AM',
+            selected: _sel == 0,
+            onTap: () => setState(() => _sel = 0),
+          ),
           SelectTile(
-              label: 'Afternoon – 12:00 PM',
-              selected: _sel == 1,
-              onTap: () => setState(() => _sel = 1)),
+            label: 'Afternoon – 12:00 PM',
+            selected: _sel == 1,
+            onTap: () => setState(() => _sel = 1),
+          ),
           SelectTile(
-              label: 'Evening – 7:00 PM',
-              selected: _sel == 2,
-              onTap: () => setState(() => _sel = 2)),
+            label: 'Evening – 7:00 PM',
+            selected: _sel == 2,
+            onTap: () => setState(() => _sel = 2),
+          ),
           SelectTile(
             label: 'Custom Time',
             trailing: _sel == 3 ? _custom.format(context) : null,
             selected: _sel == 3,
             onTap: () async {
-              setState(() => _sel = 3);
-              final t =
-                  await showTimePicker(context: context, initialTime: _custom);
-              if (t != null) setState(() => _custom = t);
+              final time = await showTimePicker(
+                context: context,
+                initialTime: _custom,
+              );
+
+              if (time != null && mounted) {
+                setState(() {
+                  _sel = 3;
+                  _custom = time;
+                });
+              }
             },
           ),
         ],
@@ -75,6 +289,7 @@ class _NotificationSettingsScreenState
     );
   }
 }
+// ───────────────────────── 17. NOTIFICATION SETTINGS ─────────────────────────
 
 // ───────────────────────── 23. PROFILE / SETTINGS ─────────────────────────
 class ProfileScreen extends StatelessWidget {

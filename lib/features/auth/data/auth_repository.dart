@@ -5,12 +5,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/services/fcm_service.dart';
 import 'token_storage.dart';
 
-/// An error whose [message] is safe to show to the user.
+/// An error whose message is safe to show to the user.
 class AuthFailure implements Exception {
   AuthFailure(this.message);
+
   final String message;
+
   @override
   String toString() => message;
 }
@@ -27,7 +30,6 @@ bool isSignInCancelled(Object e) =>
 
 /// Turns any login error (Firebase / Dio / our own) into a short message.
 String authErrorMessage(Object e) {
-  // Full details in the terminal / browser console while we debug.
   debugPrint('AUTH ERROR -> ${e.runtimeType}: $e');
 
   if (e is AuthFailure) return e.message;
@@ -62,9 +64,11 @@ String authErrorMessage(Object e) {
 
   if (e is DioException) {
     final data = e.response?.data;
+
     if (data is Map && data['message'] is String) {
       return data['message'] as String;
     }
+
     switch (e.type) {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
@@ -78,24 +82,28 @@ String authErrorMessage(Object e) {
   }
 
   final s = e.toString();
-  final text = s.startsWith('Exception: ') ? s.substring(11) : s;
-  return '$text [${e.runtimeType}]';
+  final errorText = s.startsWith('Exception: ') ? s.substring(11) : s;
+
+  return '$errorText [${e.runtimeType}]';
 }
 
 /// Phone, Google and Apple login:
-///   Firebase sign-in -> Firebase ID token -> Laravel -> Passport token
+/// Firebase sign-in -> Firebase ID token -> Laravel -> Passport token
 class AuthRepository {
   AuthRepository({
     required ApiClient apiClient,
     required TokenStorage tokenStorage,
     FirebaseAuth? firebaseAuth,
+    FcmService? fcmService,
   })  : _api = apiClient,
         _tokens = tokenStorage,
-        _firebase = firebaseAuth ?? FirebaseAuth.instance;
+        _firebase = firebaseAuth ?? FirebaseAuth.instance,
+        _fcm = fcmService;
 
   final ApiClient _api;
   final TokenStorage _tokens;
   final FirebaseAuth _firebase;
+  final FcmService? _fcm;
 
   String? _verificationId;
   int? _resendToken;
@@ -103,8 +111,8 @@ class AuthRepository {
 
   final _autoVerified = StreamController<void>.broadcast();
 
-  /// Fires when Android reads the SMS (or Firebase instantly verifies) AFTER
-  /// the OTP screen is already open, so the UI can continue by itself.
+  /// Fires when Android reads the SMS (or Firebase instantly verifies)
+  /// AFTER the OTP screen is already open, so the UI can continue by itself.
   Stream<void> get autoVerified => _autoVerified.stream;
 
   /// True when Firebase already verified the phone without a typed code.
@@ -112,16 +120,23 @@ class AuthRepository {
 
   /// Is an API token saved on this device?
   Future<bool> hasSession() async {
-    final t = await _tokens.read();
-    return t != null && t.isNotEmpty;
+    final token = await _tokens.read();
+    return token != null && token.isNotEmpty;
   }
 
-  // ───────────────────────── phone ─────────────────────────
+  // ───────────────────────── PHONE ─────────────────────────
 
   /// [phoneNumber] must be E.164, e.g. +919876543210.
-  Future<void> sendOtp(String phoneNumber, {bool resend = false}) async {
+  Future<void> sendOtp(
+    String phoneNumber, {
+    bool resend = false,
+  }) async {
     final completer = Completer<void>();
-    if (!resend) _resendToken = null;
+
+    if (!resend) {
+      _resendToken = null;
+    }
+
     _autoCredential = null;
 
     await _firebase.verifyPhoneNumber(
@@ -130,6 +145,7 @@ class AuthRepository {
       forceResendingToken: resend ? _resendToken : null,
       verificationCompleted: (credential) {
         _autoCredential = credential;
+
         if (!completer.isCompleted) {
           completer.complete();
         } else {
@@ -144,10 +160,14 @@ class AuthRepository {
       codeSent: (verificationId, resendToken) {
         _verificationId = verificationId;
         _resendToken = resendToken;
-        if (!completer.isCompleted) completer.complete();
+
+        if (!completer.isCompleted) {
+          completer.complete();
+        }
       },
       codeAutoRetrievalTimeout: (verificationId) {
         _verificationId = verificationId;
+
         if (!completer.isCompleted) {
           completer.completeError(
             AuthFailure('OTP request timed out. Please try again.'),
@@ -167,9 +187,11 @@ class AuthRepository {
       _autoCredential = null;
     } else {
       final verificationId = _verificationId;
+
       if (verificationId == null) {
         throw AuthFailure('Please request an OTP first.');
       }
+
       credential = PhoneAuthProvider.credential(
         verificationId: verificationId,
         smsCode: otp.trim(),
@@ -178,11 +200,13 @@ class AuthRepository {
 
     final result = await _firebase.signInWithCredential(credential);
     final firebaseUser = result.user;
+
     if (firebaseUser == null) {
       throw AuthFailure('Firebase could not verify your phone.');
     }
 
     final idToken = await firebaseUser.getIdToken(true);
+
     if (idToken == null || idToken.isEmpty) {
       throw AuthFailure('Could not obtain Firebase ID token.');
     }
@@ -190,7 +214,7 @@ class AuthRepository {
     return _exchange('/auth/login', idToken);
   }
 
-  // ───────────────────────── google / apple ─────────────────────────
+  // ───────────────────────── GOOGLE / APPLE ─────────────────────────
 
   /// Web: popup. Android / iOS: browser sheet.
   /// Returns the same data map as [verifyOtp].
@@ -217,11 +241,13 @@ class AuthRepository {
         : await _firebase.signInWithProvider(provider);
 
     final firebaseUser = result.user;
+
     if (firebaseUser == null) {
       throw AuthFailure('Sign-in failed. Please try again.');
     }
 
     final idToken = await firebaseUser.getIdToken(true);
+
     if (idToken == null || idToken.isEmpty) {
       throw AuthFailure('Could not obtain Firebase ID token.');
     }
@@ -229,10 +255,14 @@ class AuthRepository {
     return _exchange(path, idToken);
   }
 
-  // ───────────────────────── shared ─────────────────────────
+  // ───────────────────────── SHARED LOGIN ─────────────────────────
 
   /// Sends the Firebase ID token to Laravel and stores the access token.
-  Future<Map<String, dynamic>> _exchange(String path, String idToken) async {
+  /// FCM registration starts only after Laravel login succeeds.
+  Future<Map<String, dynamic>> _exchange(
+    String path,
+    String idToken,
+  ) async {
     try {
       final response = await _api.dio.post(
         path,
@@ -249,7 +279,19 @@ class AuthRepository {
         throw AuthFailure('Server did not return an access token.');
       }
 
+      // Save Laravel Passport token first.
       await _tokens.save(accessToken);
+
+      // Register this device for Firebase push notifications.
+      // FCM failure must not interrupt a successful login.
+      if (_fcm != null) {
+        unawaited(
+          _fcm.initialize().catchError((Object error) {
+            debugPrint('FCM INITIALIZATION ERROR -> $error');
+          }),
+        );
+      }
+
       return data;
     } catch (_) {
       // Do not leave a Firebase session active if Laravel login fails.
@@ -258,15 +300,33 @@ class AuthRepository {
     }
   }
 
+  // ───────────────────────── PROFILE ─────────────────────────
+
   /// Saves the user's name on the server (PATCH /profile).
   Future<void> updateName(String name) async {
-    await _api.dio.patch('/profile', data: {'name': name});
+    await _api.dio.patch(
+      '/profile',
+      data: {'name': name},
+    );
   }
+
+  // ───────────────────────── LOGOUT ─────────────────────────
 
   Future<void> logout() async {
     try {
+      // Deactivate this device while the Laravel token is still available.
+      if (_fcm != null) {
+        try {
+          await _fcm.deactivateDevice();
+        } catch (e) {
+          // FCM deactivation failure must not prevent logout.
+          debugPrint('FCM DEACTIVATION ERROR -> $e');
+        }
+      }
+
       await _api.dio.post('/auth/logout');
     } finally {
+      // Always clear local sessions, even if the API request fails.
       await _tokens.clear();
       await _firebase.signOut();
     }
