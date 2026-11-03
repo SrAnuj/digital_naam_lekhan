@@ -21,7 +21,10 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
   String? _error;
 
   int _written = 0;
+  int _target = 0;
   double _dailyAverage = 0;
+
+  DateTime? _startedAt;
 
   final List<int> _milestones = [1008, 5000, 11000, 21000];
 
@@ -82,7 +85,7 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
     });
 
     try {
-      // Overall completed count from My Sankalps API.
+      // Fetch selected Sankalp details from My Sankalps API.
       final sankalps = await UserSankalpRepository.fetchMySankalps();
 
       final matchingSankalp = sankalps.firstWhere(
@@ -95,9 +98,17 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
       }
 
       final totalWritten =
-          int.tryParse(matchingSankalp['completed_count'].toString()) ?? 0;
+          int.tryParse(matchingSankalp['completed_count']?.toString() ?? '') ??
+              0;
 
-      // Daily progress records.
+      final totalTarget =
+          int.tryParse(matchingSankalp['target_count']?.toString() ?? '') ?? 0;
+
+      final startedAt = DateTime.tryParse(
+        matchingSankalp['started_at']?.toString() ?? '',
+      );
+
+      // Fetch daily progress records for selected Sankalp.
       final records =
           await SankalpProgressRepository.fetchProgressHistory(sankalpId);
 
@@ -111,7 +122,7 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
 
         if (date == null || date.isEmpty) continue;
 
-        final count = int.tryParse(record['count'].toString()) ?? 0;
+        final count = int.tryParse(record['count']?.toString() ?? '') ?? 0;
 
         progress[date] = (progress[date] ?? 0) + count;
 
@@ -143,20 +154,23 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
 
       setState(() {
         _written = totalWritten;
+        _target = totalTarget;
+        _startedAt = startedAt;
         _dailyAverage = average;
 
         _progressByDate
           ..clear()
           ..addAll(progress);
 
-        // Select latest date having recorded progress.
         if (latestDate != null) {
           _selectedDate = latestDate;
           _month = DateTime(latestDate.year, latestDate.month);
         }
 
         _isLoading = false;
+
         AppState.written = totalWritten;
+        AppState.target = totalTarget;
       });
     } catch (e) {
       if (!mounted) return;
@@ -185,18 +199,31 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
     });
   }
 
+  String _startedDateText() {
+    if (_startedAt == null) return '—';
+
+    final date = _startedAt!.toLocal();
+
+    return '${date.day.toString().padLeft(2, '0')}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.year}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final deity = AppState.deity;
-    final target = AppState.target > 0 ? AppState.target : 0;
+
+    final target = _target > 0 ? _target : 0;
+    final safeWritten = _written.clamp(0, target > 0 ? target : _written);
 
     final pct =
-        target > 0 ? (_written / target).clamp(0.0, 1.0).toDouble() : 0.0;
+        target > 0 ? (safeWritten / target).clamp(0.0, 1.0).toDouble() : 0.0;
 
     return DevScaffold(
       title: 'Your Sankalp',
       showBack: false,
       navIndex: 2,
+      scroll: false,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -207,23 +234,18 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
                     physics: const AlwaysScrollableScrollPhysics(),
                     children: [
                       const SizedBox(height: 4),
-
                       Text(
                         deity != null ? 'श्री ${deity.hi}' : 'Your Sankalp',
                         textAlign: TextAlign.center,
                         style: AppText.hindi(38),
                       ),
-
                       const SizedBox(height: 8),
-
                       Text(
                         '${fmt(_written)} / ${fmt(target)}',
                         textAlign: TextAlign.center,
                         style: AppText.body(16, w: FontWeight.w600),
                       ),
-
                       const SizedBox(height: 10),
-
                       Row(
                         children: [
                           Expanded(
@@ -234,7 +256,7 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
                           ),
                           const SizedBox(width: 10),
                           Text(
-                            '${(pct * 100).round()}%',
+                            '${(pct * 100).toStringAsFixed(2)}%',
                             style: AppText.body(
                               12.5,
                               c: AppColors.maroon,
@@ -243,29 +265,28 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
                           ),
                         ],
                       ),
-
                       const SizedBox(height: 16),
 
+                      // StatBox already returns Expanded internally.
+                      // Do not wrap it in another Expanded.
                       Row(
                         children: [
-                          const Expanded(
-                            child: StatBox(label: 'Started', value: '—'),
+                          StatBox(
+                            label: 'Started',
+                            value: _startedDateText(),
                           ),
-                          Expanded(
-                            child: StatBox(label: 'Streak', value: '—'),
+                          StatBox(
+                            label: 'Streak',
+                            value: '—',
                           ),
-                          Expanded(
-                            child: StatBox(
-                              label: 'Daily Avg',
-                              value: fmt(_dailyAverage.round()),
-                            ),
+                          StatBox(
+                            label: 'Daily Avg',
+                            value: fmt(_dailyAverage.round()),
                           ),
                         ],
                       ),
 
                       const SizedBox(height: 22),
-
-                      // DAILY HISTORY SECTION
                       Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
@@ -273,13 +294,9 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
                           style: AppText.display(18),
                         ),
                       ),
-
                       const SizedBox(height: 10),
-
                       _historyCalendar(),
-
                       const SizedBox(height: 22),
-
                       Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
@@ -287,9 +304,7 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
                           style: AppText.display(18),
                         ),
                       ),
-
                       const SizedBox(height: 10),
-
                       DevCard(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 14,
@@ -308,15 +323,12 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
                           ],
                         ),
                       ),
-
                       const SizedBox(height: 20),
-
                       Text(
                         'Pull down to refresh your progress.',
                         textAlign: TextAlign.center,
                         style: AppText.body(11, c: AppColors.muted),
                       ),
-
                       const SizedBox(height: 20),
                     ],
                   ),
@@ -712,6 +724,7 @@ class _SankalpHistoryScreenState extends State<SankalpHistoryScreen> {
     if (_isLoading) {
       return DevScaffold(
         title: 'Sankalp History',
+        scroll: false,
         bottom: null,
         body: const Center(child: CircularProgressIndicator()),
       );
@@ -720,6 +733,7 @@ class _SankalpHistoryScreenState extends State<SankalpHistoryScreen> {
     if (_error != null) {
       return DevScaffold(
         title: 'Sankalp History',
+        scroll: false,
         bottom: null,
         body: _errorView(),
       );
@@ -751,6 +765,7 @@ class _SankalpHistoryScreenState extends State<SankalpHistoryScreen> {
 
     return DevScaffold(
       title: 'Sankalp History',
+      scroll: false,
       bottom: null,
       body: RefreshIndicator(
         onRefresh: _loadHistory,
@@ -966,6 +981,8 @@ class _MySankalpsScreenState extends State<MySankalpsScreen> {
   }
 
   Future<void> _loadSankalps() async {
+    if (!mounted) return;
+
     setState(() {
       _isLoading = true;
       _error = null;
@@ -977,21 +994,16 @@ class _MySankalpsScreenState extends State<MySankalpsScreen> {
       debugPrint('SANKALP API COUNT: ${result.length}');
       debugPrint('SANKALP API DATA: $result');
 
-      debugPrint(
-        'ACTIVE SANKALPS: ${result.where((item) => item['status']?.toString() == 'active').length}',
-      );
-
-      debugPrint(
-        'COMPLETED SANKALPS: ${result.where((item) => item['status']?.toString() == 'completed').length}',
-      );
-
       if (!mounted) return;
 
       setState(() {
         _sankalps = result;
         _isLoading = false;
       });
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('MY SANKALPS ERROR: $e');
+      debugPrintStack(stackTrace: stackTrace);
+
       if (!mounted) return;
 
       setState(() {
@@ -1003,22 +1015,39 @@ class _MySankalpsScreenState extends State<MySankalpsScreen> {
 
   int _intValue(dynamic value) {
     if (value is int) return value;
+    if (value is num) return value.toInt();
+
     return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
-  Deity _getDeity(Map<String, dynamic> sankalp) {
-    final naam = sankalp['naam'] is Map
-        ? Map<String, dynamic>.from(sankalp['naam'])
-        : <String, dynamic>{};
+  Map<String, dynamic> _safeMap(dynamic value) {
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
 
-    final icon = naam['icon']?.toString();
+    return <String, dynamic>{};
+  }
+
+  String _status(Map<String, dynamic> sankalp) {
+    return sankalp['status']?.toString().trim().toLowerCase() ?? '';
+  }
+
+  Deity _getDeity(Map<String, dynamic> sankalp) {
+    final naam = _safeMap(sankalp['naam']);
+
+    final icon = naam['icon']?.toString().trim();
 
     String? imageUrl;
 
     if (icon != null && icon.isNotEmpty) {
-      imageUrl = icon.startsWith('http')
-          ? icon
-          : 'https://sankalp.premierwebtechservices.com/storage/$icon';
+      if (icon.startsWith('http://') || icon.startsWith('https://')) {
+        imageUrl = icon;
+      } else {
+        final imagePath = icon.startsWith('/') ? icon.substring(1) : icon;
+
+        imageUrl =
+            'https://sankalp.premierwebtechservices.com/storage/$imagePath';
+      }
     }
 
     return Deity(
@@ -1043,15 +1072,13 @@ class _MySankalpsScreenState extends State<MySankalpsScreen> {
   }
 
   Widget _item(Map<String, dynamic> sankalp) {
-    final naam = sankalp['naam'] is Map
-        ? Map<String, dynamic>.from(sankalp['naam'])
-        : <String, dynamic>{};
+    final naam = _safeMap(sankalp['naam']);
 
     final total = _intValue(sankalp['target_count']);
     final completed = _intValue(sankalp['completed_count']);
 
     final safeTotal = total > 0 ? total : 0;
-    final safeDone = completed.clamp(0, safeTotal);
+    final safeDone = completed.clamp(0, safeTotal).toInt();
 
     final percentage =
         safeTotal > 0 ? (safeDone / safeTotal).clamp(0.0, 1.0).toDouble() : 0.0;
@@ -1061,18 +1088,31 @@ class _MySankalpsScreenState extends State<MySankalpsScreen> {
 
     final title = hindiName.isNotEmpty ? '$hindiName नाम' : '$englishName Naam';
 
-    final status = sankalp['status']?.toString() ?? 'active';
-    final isCompleted = status == 'completed';
-
+    final isCompleted = _status(sankalp) == 'completed';
     final deity = _getDeity(sankalp);
 
-    return DevCard(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      onTap: () {
-        AppState.createdSankalpId = _intValue(sankalp['id']);
-        AppState.target = total;
-        AppState.written = completed;
+    final sankalpId = _intValue(sankalp['id']);
+
+    return _SankalpCard(
+      sankalpId: sankalpId,
+      title: title,
+      deity: deity,
+      completed: safeDone,
+      total: safeTotal,
+      percentage: percentage,
+      isCompleted: isCompleted,
+      onOpen: () {
+        if (sankalpId <= 0) {
+          showDemoSnack(
+            context,
+            'Invalid Sankalp. Please refresh and try again.',
+          );
+          return;
+        }
+
+        AppState.createdSankalpId = sankalpId;
+        AppState.target = safeTotal;
+        AppState.written = safeDone;
         AppState.deity = deity;
 
         Navigator.pushNamed(
@@ -1080,48 +1120,6 @@ class _MySankalpsScreenState extends State<MySankalpsScreen> {
           isCompleted ? '/completion' : '/progress',
         );
       },
-      child: Row(
-        children: [
-          DeityAvatar(
-            deity: deity,
-            size: 56,
-            radius: 10,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: AppText.hindi(16, c: AppColors.maroon),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${fmt(safeDone)} / ${fmt(safeTotal)}',
-                  style: AppText.body(12.5, w: FontWeight.w500),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Expanded(
-                      child: GradientProgress(
-                        value: percentage,
-                        height: 7,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${(percentage * 100).round()}%',
-                      style: AppText.body(11, c: AppColors.muted),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1186,16 +1184,11 @@ class _MySankalpsScreenState extends State<MySankalpsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final activeSankalps = _sankalps
-        .where((item) => item['status']?.toString() == 'active')
-        .toList();
+    final activeSankalps =
+        _sankalps.where((item) => _status(item) == 'active').toList();
 
-    final completedSankalps = _sankalps
-        .where((item) => item['status']?.toString() == 'completed')
-        .toList();
-
-    debugPrint('ACTIVE SANKALPS: ${activeSankalps.length}');
-    debugPrint('COMPLETED SANKALPS: ${completedSankalps.length}');
+    final completedSankalps =
+        _sankalps.where((item) => _status(item) == 'completed').toList();
 
     return DevScaffold(
       title: 'My Sankalps',
@@ -1230,6 +1223,501 @@ class _MySankalpsScreenState extends State<MySankalpsScreen> {
                         ],
                       ),
                     ),
+    );
+  }
+}
+
+// ───────────────────────── SANKALP CARD ─────────────────────────
+
+class _SankalpCard extends StatefulWidget {
+  final int sankalpId;
+  final String title;
+  final Deity deity;
+  final int completed;
+  final int total;
+  final double percentage;
+  final bool isCompleted;
+  final VoidCallback onOpen;
+
+  const _SankalpCard({
+    required this.sankalpId,
+    required this.title,
+    required this.deity,
+    required this.completed,
+    required this.total,
+    required this.percentage,
+    required this.isCompleted,
+    required this.onOpen,
+  });
+
+  @override
+  State<_SankalpCard> createState() => _SankalpCardState();
+}
+
+class _SankalpCardState extends State<_SankalpCard> {
+  int? _dailyTarget;
+  int _completedToday = 0;
+
+  bool _isLoadingTarget = true;
+  bool _isSavingTarget = false;
+
+  String? _targetError;
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (!widget.isCompleted) {
+      _loadDailyTarget();
+    } else {
+      _isLoadingTarget = false;
+    }
+  }
+
+  int? _readInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  Map<String, dynamic>? _readMap(dynamic value) {
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+
+    return null;
+  }
+
+  Future<void> _loadDailyTarget() async {
+    if (widget.sankalpId <= 0) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoadingTarget = false;
+        _targetError = 'Invalid Sankalp ID.';
+      });
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoadingTarget = true;
+        _targetError = null;
+      });
+    }
+
+    try {
+      final response = await SankalpProgressRepository.fetchTodaySummary(
+        widget.sankalpId,
+      );
+
+      final summary = _readMap(response);
+
+      if (summary == null) {
+        throw Exception('Invalid daily target response.');
+      }
+
+      final dailyTarget = _readMap(summary['daily_target']);
+
+      if (!mounted) return;
+
+      setState(() {
+        _dailyTarget = _readInt(dailyTarget?['target_count']);
+        _completedToday = _readInt(summary['completed_today']) ?? 0;
+        _isLoadingTarget = false;
+        _targetError = null;
+      });
+    } catch (e) {
+      debugPrint(
+        'DAILY TARGET LOAD ERROR (${widget.sankalpId}): $e',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _isLoadingTarget = false;
+        _targetError = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  Future<void> _showTargetDialog() async {
+    if (_isSavingTarget) return;
+
+    final target = await showDialog<int>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return _DailyTargetDialog(
+          title: widget.title,
+          currentTarget: _dailyTarget,
+        );
+      },
+    );
+
+    if (target == null || !mounted) return;
+
+    await _saveDailyTarget(target);
+  }
+
+  Future<void> _saveDailyTarget(int targetCount) async {
+    if (_isSavingTarget) return;
+
+    setState(() {
+      _isSavingTarget = true;
+      _targetError = null;
+    });
+
+    try {
+      await SankalpProgressRepository.setDailyTarget(
+        sankalpId: widget.sankalpId,
+        targetCount: targetCount,
+      );
+
+      await _loadDailyTarget();
+
+      if (!mounted) return;
+
+      setState(() {
+        _isSavingTarget = false;
+        _dailyTarget = targetCount;
+      });
+
+      showDemoSnack(
+        context,
+        'Daily target saved successfully 🙏',
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isSavingTarget = false;
+        _targetError = e.toString().replaceFirst('Exception: ', '');
+      });
+
+      showDemoSnack(
+        context,
+        'Unable to save daily target: $_targetError',
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dailyProgress = _dailyTarget != null && _dailyTarget! > 0
+        ? (_completedToday / _dailyTarget!).clamp(0.0, 1.0).toDouble()
+        : 0.0;
+
+    return DevCard(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      onTap: widget.onOpen,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              DeityAvatar(
+                deity: widget.deity,
+                size: 56,
+                radius: 10,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.title,
+                      style: AppText.hindi(
+                        16,
+                        c: AppColors.maroon,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${fmt(widget.completed)} / ${fmt(widget.total)}',
+                      style: AppText.body(
+                        12.5,
+                        w: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GradientProgress(
+                            value: widget.percentage,
+                            height: 7,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${(widget.percentage * 100).round()}%',
+                          style: AppText.body(
+                            11,
+                            c: AppColors.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          // Daily Target section: active Sankalps only.
+          if (!widget.isCompleted) ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 10),
+            if (_isLoadingTarget)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Text('Loading daily target...'),
+                  ],
+                ),
+              )
+            else ...[
+              Row(
+                children: [
+                  Icon(
+                    Icons.flag_rounded,
+                    size: 18,
+                    color: AppColors.maroon,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _dailyTarget != null && _dailyTarget! > 0
+                          ? 'Daily Target: ${fmt(_dailyTarget!)}'
+                          : 'Daily Target: Not Set',
+                      style: AppText.body(
+                        13,
+                        c: AppColors.maroon,
+                        w: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  if (_dailyTarget != null && _dailyTarget! > 0)
+                    Text(
+                      '${fmt(_completedToday)} / ${fmt(_dailyTarget!)}',
+                      style: AppText.body(
+                        11,
+                        c: AppColors.muted,
+                      ),
+                    ),
+                ],
+              ),
+              if (_dailyTarget != null && _dailyTarget! > 0) ...[
+                const SizedBox(height: 8),
+                GradientProgress(
+                  value: dailyProgress,
+                  height: 6,
+                ),
+              ],
+              if (_targetError != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Could not load daily target. You can retry below.',
+                  style: AppText.body(
+                    11,
+                    c: AppColors.muted,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _isSavingTarget
+                      ? null
+                      : _targetError != null
+                          ? _loadDailyTarget
+                          : _showTargetDialog,
+                  icon: _isSavingTarget
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : Icon(
+                          _targetError != null
+                              ? Icons.refresh_rounded
+                              : _dailyTarget != null && _dailyTarget! > 0
+                                  ? Icons.edit_rounded
+                                  : Icons.add_rounded,
+                        ),
+                  label: Text(
+                    _isSavingTarget
+                        ? 'Saving...'
+                        : _targetError != null
+                            ? 'Retry Daily Target'
+                            : _dailyTarget != null && _dailyTarget! > 0
+                                ? 'Update Daily Target'
+                                : 'Set Daily Target',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.maroon,
+                    side: BorderSide(
+                      color: AppColors.maroon.withValues(alpha: 0.5),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ───────────────────────── DAILY TARGET DIALOG ─────────────────────────
+
+class _DailyTargetDialog extends StatefulWidget {
+  final String title;
+  final int? currentTarget;
+
+  const _DailyTargetDialog({
+    required this.title,
+    required this.currentTarget,
+  });
+
+  @override
+  State<_DailyTargetDialog> createState() => _DailyTargetDialogState();
+}
+
+class _DailyTargetDialogState extends State<_DailyTargetDialog> {
+  late final TextEditingController _controller;
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = TextEditingController(
+      text: widget.currentTarget?.toString() ?? '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (_formKey.currentState?.validate() != true) {
+      return;
+    }
+
+    final value = int.parse(_controller.text.trim());
+
+    Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isUpdate = widget.currentTarget != null && widget.currentTarget! > 0;
+
+    return AlertDialog(
+      scrollable: true,
+      insetPadding: const EdgeInsets.symmetric(
+        horizontal: 20,
+        vertical: 24,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      title: Text(
+        isUpdate ? 'Update Daily Target' : 'Set Daily Target',
+        style: AppText.display(
+          20,
+          c: AppColors.maroon,
+        ),
+      ),
+      content: SizedBox(
+        width: 360,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.title,
+                style: AppText.body(
+                  13,
+                  c: AppColors.muted,
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _controller,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.done,
+                onFieldSubmitted: (_) => _save(),
+                decoration: InputDecoration(
+                  labelText: 'Daily Naam Target',
+                  hintText: 'Example: 108',
+                  prefixIcon: const Icon(Icons.flag_rounded),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                validator: (value) {
+                  final count = int.tryParse(value?.trim() ?? '');
+
+                  if (count == null || count <= 0) {
+                    return 'Enter a valid target greater than 0.';
+                  }
+
+                  return null;
+                },
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Your target will be saved for this Sankalp only.',
+                style: AppText.body(
+                  11,
+                  c: AppColors.muted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.maroon,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: _save,
+          child: const Text('Save Target'),
+        ),
+      ],
     );
   }
 }

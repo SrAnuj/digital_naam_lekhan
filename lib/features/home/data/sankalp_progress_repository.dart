@@ -5,6 +5,8 @@ import '../../../core/services/app_services.dart';
 class SankalpProgressRepository {
   SankalpProgressRepository._();
 
+  // ───────────────────── RESPONSE HELPERS ─────────────────────
+
   static Map<String, dynamic> _toMap(dynamic value) {
     if (value is Map) {
       return Map<String, dynamic>.from(value);
@@ -58,11 +60,23 @@ class SankalpProgressRepository {
     return response;
   }
 
-  // Fetch today's target and progress.
+  static void _validateSankalpId(int sankalpId) {
+    if (sankalpId <= 0) {
+      throw Exception('Invalid Sankalp ID.');
+    }
+  }
+
+  // ───────────────────── TODAY SUMMARY ─────────────────────
+
+  /// Fetch today's target and progress.
+  ///
+  /// GET /daily-targets/{sankalpId}/today
   static Future<Map<String, dynamic>> fetchTodaySummary(
     int sankalpId,
   ) async {
     try {
+      _validateSankalpId(sankalpId);
+
       final response = await AppServices.api.dio.get(
         '/daily-targets/$sankalpId/today',
       );
@@ -78,12 +92,22 @@ class SankalpProgressRepository {
     }
   }
 
-  // Create or update today's daily target.
+  // ───────────────────── SET DAILY TARGET ─────────────────────
+
+  /// Create or update today's daily target.
+  ///
+  /// POST /daily-targets
   static Future<Map<String, dynamic>> setDailyTarget({
     required int sankalpId,
     required int targetCount,
   }) async {
     try {
+      _validateSankalpId(sankalpId);
+
+      if (targetCount <= 0) {
+        throw Exception('Daily target must be greater than zero.');
+      }
+
       final response = await AppServices.api.dio.post(
         '/daily-targets',
         data: {
@@ -103,13 +127,29 @@ class SankalpProgressRepository {
     }
   }
 
-  // Save writing progress.
+  // ───────────────────── SAVE PROGRESS ─────────────────────
+
+  /// Save Writing or Jap Counter progress.
+  ///
+  /// POST /sankalp-progress/{sankalpId}/progress
+  ///
+  /// Both Writing and Jap Counter use this same method.
   static Future<Map<String, dynamic>> saveProgress({
     required int sankalpId,
     required int count,
     required String progressDate,
   }) async {
     try {
+      _validateSankalpId(sankalpId);
+
+      if (count <= 0) {
+        throw Exception('Naam count must be greater than zero.');
+      }
+
+      if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(progressDate)) {
+        throw Exception('Invalid progress date. Use YYYY-MM-DD.');
+      }
+
       final response = await AppServices.api.dio.post(
         '/sankalp-progress/$sankalpId/progress',
         data: {
@@ -132,11 +172,17 @@ class SankalpProgressRepository {
     }
   }
 
-  // Fetch all progress logs of one Sankalp.
+  // ───────────────────── PROGRESS HISTORY ─────────────────────
+
+  /// Fetch all progress logs of one Sankalp.
+  ///
+  /// GET /sankalp-progress/{sankalpId}/daily-progress
   static Future<List<Map<String, dynamic>>> fetchProgressHistory(
     int sankalpId,
   ) async {
     try {
+      _validateSankalpId(sankalpId);
+
       final response = await AppServices.api.dio.get(
         '/sankalp-progress/$sankalpId/daily-progress',
       );
@@ -160,7 +206,11 @@ class SankalpProgressRepository {
     }
   }
 
-  // Fetch progress logs for all user's Sankalps.
+  // ───────────────────── ALL USER PROGRESS ─────────────────────
+
+  /// Fetch progress logs for all user's Sankalps.
+  ///
+  /// GET /sankalp-progress
   static Future<List<Map<String, dynamic>>> fetchAllProgress() async {
     try {
       final response = await AppServices.api.dio.get(

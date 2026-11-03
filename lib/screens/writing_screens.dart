@@ -6,6 +6,129 @@ import 'package:flutter/services.dart';
 import '../data.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import '../features/home/data/sankalp_progress_repository.dart';
+
+// ───────────────────────── SHARED PROGRESS HELPERS ─────────────────────────
+
+String _todayDate() {
+  final now = DateTime.now();
+
+  final year = now.year.toString().padLeft(4, '0');
+  final month = now.month.toString().padLeft(2, '0');
+  final day = now.day.toString().padLeft(2, '0');
+
+  return '$year-$month-$day';
+}
+
+int? _readInt(dynamic value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+
+  return int.tryParse(value?.toString() ?? '');
+}
+
+Map<String, dynamic>? _readMap(dynamic value) {
+  if (value is Map) {
+    return Map<String, dynamic>.from(value);
+  }
+
+  return null;
+}
+
+/// Backend se aaj ka daily target aur completed progress load karta hai.
+Future<void> _loadTodaySummary() async {
+  final sankalpId = AppState.createdSankalpId;
+
+  if (sankalpId == null || sankalpId <= 0) {
+    AppState.dailySummaryError = 'Active Sankalp was not found.';
+    AppState.hasDailySummaryLoaded = true;
+    AppState.isDailySummaryLoading = false;
+    return;
+  }
+
+  AppState.isDailySummaryLoading = true;
+  AppState.dailySummaryError = null;
+
+  try {
+    final response =
+        await SankalpProgressRepository.fetchTodaySummary(sankalpId);
+
+    final summary = _readMap(response);
+
+    if (summary == null) {
+      throw Exception('Invalid daily progress response.');
+    }
+
+    final dailyTarget = _readMap(summary['daily_target']);
+
+    AppState.todayGoal = _readInt(dailyTarget?['target_count']);
+    AppState.todayWritten = _readInt(summary['completed_today']) ?? 0;
+
+    AppState.isDailySummaryLoading = false;
+    AppState.hasDailySummaryLoaded = true;
+    AppState.dailySummaryError = null;
+  } catch (error) {
+    AppState.isDailySummaryLoading = false;
+    AppState.hasDailySummaryLoaded = true;
+    AppState.dailySummaryError = _progressError(error);
+  }
+}
+
+/// Writing aur Jap dono isi API se progress save karte hain.
+Future<Map<String, dynamic>> _saveNaamProgress(int count) async {
+  final sankalpId = AppState.createdSankalpId;
+
+  if (sankalpId == null || sankalpId <= 0) {
+    throw Exception(
+      'Your active Sankalp was not found. Please refresh your Sankalp and try again.',
+    );
+  }
+
+  if (count <= 0) {
+    throw Exception('Please enter a valid Naam count.');
+  }
+
+  return SankalpProgressRepository.saveProgress(
+    sankalpId: sankalpId,
+    count: count,
+    progressDate: _todayDate(),
+  );
+}
+
+/// API save successful hone ke baad local progress update hota hai.
+void _updateLocalProgress(
+  Map<String, dynamic> response,
+  int savedCount,
+) {
+  final summary = _readMap(response['daily_target_summary']);
+
+  final completedToday = _readInt(summary?['completed_today']);
+
+  if (completedToday != null) {
+    AppState.todayWritten = completedToday;
+  } else {
+    AppState.todayWritten += savedCount;
+  }
+
+  // ResourceCollection ke unknown response data ko total count nahi maante.
+  AppState.written += savedCount;
+}
+
+String _progressError(Object error) {
+  return error.toString().replaceFirst('Exception: ', '');
+}
+
+bool _isDailyGoalCompleted() {
+  final goal = AppState.todayGoal;
+
+  return goal != null && goal > 0 && AppState.todayWritten >= goal;
+}
+
+double _dailyProgress(int completed, int? goal) {
+  if (goal == null || goal <= 0) return 0.0;
+
+  return (completed / goal).clamp(0.0, 1.0).toDouble();
+}
 
 // ───────────────────────── 11. WRITING SCREEN ─────────────────────────
 
@@ -62,6 +185,21 @@ class _WritingScreenState extends State<WritingScreen> {
   final List<List<Offset>> _strokes = [];
 
   double _areaH = 1;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProgress();
+  }
+
+  Future<void> _loadProgress() async {
+    await _loadTodaySummary();
+
+    if (!mounted) return;
+
+    setState(() {});
+  }
 
   int _rowsTouched() {
     if (_areaH <= 0) return 0;
@@ -80,7 +218,9 @@ class _WritingScreenState extends State<WritingScreen> {
     return touchedRows.length;
   }
 
-  void _save() {
+  Future<void> _save() async {
+    if (_isSaving) return;
+
     final count = _rowsTouched();
 
     if (count == 0) {
@@ -89,17 +229,37 @@ class _WritingScreenState extends State<WritingScreen> {
     }
 
     setState(() {
-      AppState.todayWritten =
-          (AppState.todayWritten + count).clamp(0, AppState.todayGoal).toInt();
-
-      AppState.written += count;
-      _strokes.clear();
+      _isSaving = true;
     });
 
-    if (AppState.todayGoal > 0 && AppState.todayWritten >= AppState.todayGoal) {
-      Navigator.pushNamed(context, '/daily-complete');
-    } else {
-      showDemoSnack(context, '$count Naam saved');
+    try {
+      final response = await _saveNaamProgress(count);
+
+      if (!mounted) return;
+
+      _updateLocalProgress(response, count);
+
+      setState(() {
+        _strokes.clear();
+        _isSaving = false;
+      });
+
+      if (_isDailyGoalCompleted()) {
+        Navigator.pushNamed(context, '/daily-complete');
+      } else {
+        showDemoSnack(context, '$count Naam saved successfully 🙏');
+      }
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _isSaving = false;
+      });
+
+      showDemoSnack(
+        context,
+        'Unable to save Naam: ${_progressError(error)}',
+      );
     }
   }
 
@@ -108,7 +268,8 @@ class _WritingScreenState extends State<WritingScreen> {
     final deity = AppState.deity;
     final goal = AppState.todayGoal;
     final done = AppState.todayWritten;
-    final progress = goal > 0 ? (done / goal).clamp(0.0, 1.0) : 0.0;
+
+    final progress = _dailyProgress(done, goal);
 
     return Scaffold(
       body: DevBackground(
@@ -129,7 +290,9 @@ class _WritingScreenState extends State<WritingScreen> {
                           color: Colors.white,
                           size: 20,
                         ),
-                        onPressed: () => Navigator.maybePop(context),
+                        onPressed: _isSaving
+                            ? null
+                            : () => Navigator.maybePop(context),
                       ),
                       Expanded(
                         child: Text(
@@ -147,9 +310,7 @@ class _WritingScreenState extends State<WritingScreen> {
                           Icons.check_circle_outline_rounded,
                           color: AppColors.goldLight,
                         ),
-                        onPressed: () {
-                          Navigator.pushNamed(context, '/daily-complete');
-                        },
+                        onPressed: _isSaving ? null : _save,
                       ),
                     ],
                   ),
@@ -162,10 +323,25 @@ class _WritingScreenState extends State<WritingScreen> {
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
               child: Column(
                 children: [
-                  Text(
-                    "Today's Goal: $goal",
-                    style: AppText.body(14, w: FontWeight.w600),
-                  ),
+                  if (AppState.isDailySummaryLoading)
+                    Text(
+                      'Loading daily progress...',
+                      style: AppText.body(13, c: AppColors.muted),
+                    )
+                  else if (goal == null || goal <= 0)
+                    Text(
+                      'Daily goal not set',
+                      style: AppText.body(
+                        14,
+                        c: AppColors.maroon,
+                        w: FontWeight.w600,
+                      ),
+                    )
+                  else
+                    Text(
+                      "Today's Goal: $goal",
+                      style: AppText.body(14, w: FontWeight.w600),
+                    ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -177,7 +353,9 @@ class _WritingScreenState extends State<WritingScreen> {
                       ),
                       const SizedBox(width: 10),
                       Text(
-                        '$done / $goal',
+                        goal == null || goal <= 0
+                            ? '$done completed'
+                            : '$done / $goal',
                         style: AppText.body(
                           12.5,
                           c: AppColors.maroon,
@@ -186,6 +364,16 @@ class _WritingScreenState extends State<WritingScreen> {
                       ),
                     ],
                   ),
+                  if (AppState.dailySummaryError != null) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      'Could not refresh daily progress',
+                      style: AppText.body(
+                        10.5,
+                        c: AppColors.muted,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 6),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -197,7 +385,7 @@ class _WritingScreenState extends State<WritingScreen> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        'Progress saved automatically',
+                        'Save your progress to the cloud',
                         style: AppText.body(11, c: AppColors.muted),
                       ),
                     ],
@@ -264,18 +452,26 @@ class _WritingScreenState extends State<WritingScreen> {
                             Positioned.fill(
                               child: GestureDetector(
                                 behavior: HitTestBehavior.opaque,
-                                onPanStart: (details) {
-                                  setState(() {
-                                    _strokes.add([details.localPosition]);
-                                  });
-                                },
-                                onPanUpdate: (details) {
-                                  if (_strokes.isEmpty) return;
+                                onPanStart: _isSaving
+                                    ? null
+                                    : (details) {
+                                        setState(() {
+                                          _strokes.add([
+                                            details.localPosition,
+                                          ]);
+                                        });
+                                      },
+                                onPanUpdate: _isSaving
+                                    ? null
+                                    : (details) {
+                                        if (_strokes.isEmpty) return;
 
-                                  setState(() {
-                                    _strokes.last.add(details.localPosition);
-                                  });
-                                },
+                                        setState(() {
+                                          _strokes.last.add(
+                                            details.localPosition,
+                                          );
+                                        });
+                                      },
                                 child: CustomPaint(
                                   painter: _InkPainter(_strokes),
                                 ),
@@ -300,6 +496,8 @@ class _WritingScreenState extends State<WritingScreen> {
                       label: 'Undo',
                       leading: Icons.undo_rounded,
                       onTap: () {
+                        if (_isSaving) return;
+
                         setState(() {
                           if (_strokes.isNotEmpty) {
                             _strokes.removeLast();
@@ -314,6 +512,8 @@ class _WritingScreenState extends State<WritingScreen> {
                       label: 'Clear',
                       leading: Icons.delete_outline_rounded,
                       onTap: () {
+                        if (_isSaving) return;
+
                         setState(() {
                           _strokes.clear();
                         });
@@ -328,8 +528,8 @@ class _WritingScreenState extends State<WritingScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
               child: PrimaryButton(
-                label: 'Save & Continue',
-                onTap: _save,
+                label: _isSaving ? 'Saving...' : 'Save & Continue',
+                onTap: _isSaving ? () {} : _save,
               ),
             ),
 
@@ -342,15 +542,20 @@ class _WritingScreenState extends State<WritingScreen> {
 }
 
 // ───────────────────────── 12. DAILY COMPLETION ─────────────────────────
+// ───────────────────────── 12. DAILY COMPLETION ─────────────────────────
 
 class DailyCompletionScreen extends StatelessWidget {
   const DailyCompletionScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final target = AppState.target;
-    final written = AppState.written;
-    final progress = target > 0 ? (written / target).clamp(0.0, 1.0) : 0.0;
+    final int target = AppState.target;
+    final int written = AppState.written;
+
+    final double progress =
+        target > 0 ? (written / target).clamp(0.0, 1.0).toDouble() : 0.0;
+
+    final int dailyGoal = AppState.todayGoal ?? 0;
 
     return DevScaffold(
       showBack: false,
@@ -412,7 +617,7 @@ class DailyCompletionScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '${AppState.todayWritten} / ${AppState.todayGoal}',
+            '${AppState.todayWritten} / $dailyGoal',
             style: AppText.display(40),
           ),
           const SizedBox(height: 22),
@@ -474,9 +679,7 @@ class DailyCompletionScreen extends StatelessWidget {
       ),
     );
   }
-}
-
-// ───────────────────────── 16. JAP COUNTER ─────────────────────────
+} // ───────────────────────── 16. JAP COUNTER ─────────────────────────
 
 class _BeadPainter extends CustomPainter {
   final double progress;
@@ -529,12 +732,76 @@ class JapCounterScreen extends StatefulWidget {
 
 class _JapCounterScreenState extends State<JapCounterScreen> {
   int _count = 0;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProgress();
+  }
+
+  Future<void> _loadProgress() async {
+    await _loadTodaySummary();
+
+    if (!mounted) return;
+
+    setState(() {});
+  }
+
+  Future<void> _save() async {
+    if (_isSaving) return;
+
+    if (_count <= 0) {
+      showDemoSnack(context, 'Count at least one Naam 🙏');
+      return;
+    }
+
+    final savedCount = _count;
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final response = await _saveNaamProgress(savedCount);
+
+      if (!mounted) return;
+
+      _updateLocalProgress(response, savedCount);
+
+      setState(() {
+        _count = 0;
+        _isSaving = false;
+      });
+
+      if (_isDailyGoalCompleted()) {
+        Navigator.pushNamed(context, '/daily-complete');
+      } else {
+        showDemoSnack(context, '$savedCount Jap saved successfully 🙏');
+      }
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _isSaving = false;
+      });
+
+      showDemoSnack(
+        context,
+        'Unable to save Jap: ${_progressError(error)}',
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final deity = AppState.deity;
     final goal = AppState.todayGoal;
-    final progress = goal > 0 ? (_count / goal).clamp(0.0, 1.0) : 0.0;
+
+    // Saved Writing + saved Jap + current unsaved Jap count.
+    final combinedToday = AppState.todayWritten + _count;
+
+    final progress = _dailyProgress(combinedToday, goal);
 
     return Scaffold(
       body: Container(
@@ -559,7 +826,8 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
                     Icons.arrow_back_ios_new_rounded,
                     color: AppColors.maroon,
                   ),
-                  onPressed: () => Navigator.maybePop(context),
+                  onPressed:
+                      _isSaving ? null : () => Navigator.maybePop(context),
                 ),
               ),
               Text(
@@ -568,18 +836,16 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
               ),
               const Spacer(),
               GestureDetector(
-                onTap: () {
-                  if (goal <= 0) {
-                    showDemoSnack(context, 'Please set a valid daily goal');
-                    return;
-                  }
+                onTap: _isSaving
+                    ? null
+                    : () {
+                        HapticFeedback.lightImpact();
 
-                  HapticFeedback.lightImpact();
-
-                  setState(() {
-                    _count = _count >= goal ? 1 : _count + 1;
-                  });
-                },
+                        setState(() {
+                          // Goal complete hone par bhi counting continue rahegi.
+                          _count++;
+                        });
+                      },
                 child: SizedBox(
                   width: 290,
                   height: 290,
@@ -612,11 +878,16 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
               ),
               const Spacer(),
               Text(
-                "Today's Goal",
+                AppState.isDailySummaryLoading
+                    ? 'Loading daily progress...'
+                    : "Today's Goal",
                 style: AppText.body(12.5, c: AppColors.muted),
               ),
               Text(
-                '$_count / $goal',
+                goal == null || goal <= 0
+                    ? '$combinedToday completed • Goal not set'
+                    : '$combinedToday / $goal',
+                textAlign: TextAlign.center,
                 style: AppText.display(22),
               ),
               const SizedBox(height: 18),
@@ -628,7 +899,10 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
                       child: SecondaryButton(
                         label: 'Reset',
                         onTap: () {
+                          if (_isSaving) return;
+
                           setState(() {
+                            // Sirf unsaved counter session reset hoga.
                             _count = 0;
                           });
                         },
@@ -637,28 +911,8 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: PrimaryButton(
-                        label: 'Save',
-                        onTap: () {
-                          if (_count == 0) {
-                            showDemoSnack(
-                                context, 'Count at least one Naam 🙏');
-                            return;
-                          }
-
-                          final savedCount = _count;
-
-                          setState(() {
-                            AppState.written += savedCount;
-                            AppState.todayWritten =
-                                (AppState.todayWritten + savedCount)
-                                    .clamp(0, goal > 0 ? goal : 0)
-                                    .toInt();
-
-                            _count = 0;
-                          });
-
-                          showDemoSnack(context, 'Jap saved 🙏');
-                        },
+                        label: _isSaving ? 'Saving...' : 'Save',
+                        onTap: _isSaving ? () {} : _save,
                       ),
                     ),
                   ],

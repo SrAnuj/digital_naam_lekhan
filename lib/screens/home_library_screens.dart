@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../data.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -102,26 +103,30 @@ class _HomeScreenState extends State<HomeScreen> {
     final hasActiveSankalp = _homeLoaded && sankalp != null;
 
     final naamHindi = sankalp?['name_hindi']?.toString().trim();
+
     final displayNaam =
         naamHindi != null && naamHindi.isNotEmpty ? naamHindi : (d?.hi ?? '');
 
-    final target = _homeLoaded
+    // AppState.target is now a non-nullable int.
+    final int target = _homeLoaded
         ? (sankalp?['target_count'] as num?)?.toInt() ?? 0
         : AppState.target;
 
-    final written = _homeLoaded
+    final int written = _homeLoaded
         ? (sankalp?['completed_count'] as num?)?.toInt() ?? 0
         : AppState.written;
 
-    final safeTarget = target > 0 ? target : 0;
-    final safeWritten = written.clamp(0, safeTarget);
+    final int safeTarget = target > 0 ? target : 0;
+    final int safeWritten = written.clamp(0, safeTarget).toInt();
 
-    final pct = safeTarget > 0
+    final double pct = safeTarget > 0
         ? (safeWritten / safeTarget).clamp(0.0, 1.0).toDouble()
         : 0.0;
 
     final trimmedName = _displayName.trim();
     final initial = trimmedName.isNotEmpty ? trimmedName[0].toUpperCase() : 'U';
+
+    final dailyGoal = AppState.todayGoal;
 
     return Scaffold(
       body: DevBackground(
@@ -342,7 +347,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    '${AppState.todayGoal} Naam',
+                                    dailyGoal != null && dailyGoal > 0
+                                        ? '$dailyGoal Naam'
+                                        : 'Daily goal not set',
                                     style: AppText.display(22),
                                   ),
                                   const SizedBox(height: 12),
@@ -473,7 +480,6 @@ class _NaamLibraryScreenState extends State<NaamLibraryScreen> {
       if (!mounted) return;
 
       setState(() {
-        // Use API data only. No local dummy deity fallback.
         _deities = result;
         _loading = false;
         _error = null;
@@ -937,7 +943,8 @@ class _NaamDetailScreenState extends State<NaamDetailScreen> {
                     label: 'Continue',
                     trailing: Icons.arrow_forward_rounded,
                     onTap: () {
-                      if (AppState.sankalpTargetId == null) {
+                      if (AppState.sankalpTargetId == null ||
+                          AppState.target <= 0) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text(

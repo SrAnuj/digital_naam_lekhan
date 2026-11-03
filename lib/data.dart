@@ -22,38 +22,65 @@ class Deity {
   });
 }
 
-const sankalpTargets = <int>[
-  1008,
-  5000,
-  11000,
-  21000,
-  51000,
-  100000,
-];
-
-/// App state.
-/// Deity is selected dynamically from the API.
+/// Shared application state.
+/// Business-related values are loaded from backend APIs.
 class AppState {
+  // Selected deity
   static Deity? deity;
 
-  static int target = 21000;
+  // Sankalp target
+  // 0 means target is not selected or loaded yet.
+  static int target = 0;
   static int? sankalpTargetId;
 
+  // Sankalp details
   static String forWhom = 'Myself';
   static String name = '';
   static String intention = '';
-  static int design = 1;
 
-  static int written = 0;
-  static int todayGoal = 108;
-  static int todayWritten = 0;
-  static int streak = 0;
-
-  static int? sankalpMemberId;
-
+  // Design details
+  static int? design;
   static int? designId;
   static String? designName;
   static String? designPreviewImageUrl;
   static String? designAssetUrl;
+
+  // Total progress
+  static int written = 0;
+
+  // Daily progress
+  static int? todayGoal;
+  static int todayWritten = 0;
+
+  // Streak
+  static int streak = 0;
+
+  // Sankalp member
+  static int? sankalpMemberId;
+
+  // Created Sankalp
   static int? createdSankalpId;
+
+  // Daily summary API state
+  static bool isDailySummaryLoading = false;
+  static bool hasDailySummaryLoaded = false;
+  static String? dailySummaryError;
+
+  /// Reset daily summary when Sankalp changes.
+  static void resetDailySummary() {
+    todayGoal = null;
+    todayWritten = 0;
+
+    isDailySummaryLoading = false;
+    hasDailySummaryLoaded = false;
+    dailySummaryError = null;
+  }
+
+  /// Reset progress when a new Sankalp is created.
+  static void resetSankalpProgress() {
+    written = 0;
+    streak = 0;
+
+    resetDailySummary();
+  }
 }
