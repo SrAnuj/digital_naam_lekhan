@@ -5,7 +5,7 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'package:sankalp/features/home/data/home_repository.dart';
 import 'package:sankalp/features/home/data/naam_library_repository.dart';
-
+import '../core/services/notification_navigation_service.dart';
 // ───────────────────────── 5. HOME DASHBOARD ─────────────────────────
 
 class HomeScreen extends StatefulWidget {
@@ -24,9 +24,16 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _currentSankalp;
 
   @override
+  @override
   void initState() {
     super.initState();
+
     _loadHome();
+
+    // Process pending notification after HomeScreen is displayed.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationNavigationService.instance.processPendingNotification();
+    });
   }
 
   Future<void> _loadHome() async {

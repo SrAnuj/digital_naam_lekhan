@@ -56,6 +56,8 @@ final List<ScreenEntry> screenList = [
   ScreenEntry(22, 'Share Card', '/share', (_) => const ShareCardScreen()),
   ScreenEntry(
       23, 'Profile / Settings', '/profile', (_) => const ProfileScreen()),
+  ScreenEntry(26, 'Edit Profile', '/profile-update',
+      (_) => const ProfileUpdateScreen()),
   ScreenEntry(24, 'Family Sankalp (Premium)', '/family',
       (_) => const FamilySankalpScreen()),
   ScreenEntry(25, 'Example Writing Page', '/example-page',

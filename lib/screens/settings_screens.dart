@@ -292,8 +292,60 @@ class _NotificationSettingsScreenState
 // ───────────────────────── 17. NOTIFICATION SETTINGS ─────────────────────────
 
 // ───────────────────────── 23. PROFILE / SETTINGS ─────────────────────────
-class ProfileScreen extends StatelessWidget {
+
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  Map<String, dynamic>? _profile;
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  // Load authenticated user's profile from Laravel.
+  Future<void> _loadProfile() async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
+
+    try {
+      final profile = await AppServices.auth.fetchProfile();
+
+      if (!mounted) return;
+
+      final name = profile['name']?.toString().trim() ?? '';
+
+      setState(() {
+        _profile = profile;
+        _isLoading = false;
+      });
+
+      // Keep existing local app name in sync.
+      if (name.isNotEmpty) {
+        AppState.name = name;
+        await AppServices.session.setUserName(name);
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        _error = 'Unable to load profile. Please try again.';
+      });
+    }
+  }
 
   Future<void> _logout(BuildContext context) async {
     try {
@@ -301,15 +353,27 @@ class ProfileScreen extends StatelessWidget {
     } catch (_) {
       // Offline / expired token: still log out on this device.
     }
+
     await AppServices.session.clearUser();
     AppState.name = 'Devotee';
+
     if (context.mounted) {
-      Navigator.pushNamedAndRemoveUntil(context, '/account', (r) => false);
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/account',
+        (r) => false,
+      );
     }
   }
 
-  Widget _row(BuildContext context, IconData icon, String label,
-      {String? value, String? route, bool danger = false}) {
+  Widget _row(
+    BuildContext context,
+    IconData icon,
+    String label, {
+    String? value,
+    String? route,
+    bool danger = false,
+  }) {
     return InkWell(
       onTap: () {
         if (route == '/account') {
@@ -321,26 +385,84 @@ class ProfileScreen extends StatelessWidget {
         }
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
         child: Row(
           children: [
-            Icon(icon,
-                size: 21,
-                color: danger ? Colors.red.shade700 : AppColors.maroon),
+            Icon(
+              icon,
+              size: 21,
+              color: danger ? Colors.red.shade700 : AppColors.maroon,
+            ),
             const SizedBox(width: 14),
             Expanded(
-              child: Text(label,
-                  style: AppText.body(14,
-                      c: danger ? Colors.red.shade700 : AppColors.ink,
-                      w: FontWeight.w500)),
+              child: Text(
+                label,
+                style: AppText.body(
+                  14,
+                  c: danger ? Colors.red.shade700 : AppColors.ink,
+                  w: FontWeight.w500,
+                ),
+              ),
             ),
             if (value != null)
-              Text(value, style: AppText.body(12.5, c: AppColors.muted)),
+              Text(
+                value,
+                style: AppText.body(12.5, c: AppColors.muted),
+              ),
             if (!danger)
-              const Icon(Icons.chevron_right_rounded,
-                  color: AppColors.muted, size: 20),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.muted,
+                size: 20,
+              ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _profileAvatar(String name, String? avatarUrl) {
+    final hasAvatar = avatarUrl != null && avatarUrl.trim().isNotEmpty;
+
+    return Container(
+      width: 84,
+      height: 84,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          colors: [AppColors.goldLight, AppColors.gold],
+        ),
+        border: Border.all(
+          color: AppColors.maroon,
+          width: 2,
+        ),
+      ),
+      child: ClipOval(
+        child: hasAvatar
+            ? Image.network(
+                avatarUrl,
+                width: 80,
+                height: 80,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) {
+                  return Center(
+                    child: Text(
+                      name.isNotEmpty ? name[0].toUpperCase() : 'D',
+                      style: AppText.display(38, c: AppColors.maroon),
+                    ),
+                  );
+                },
+              )
+            : Center(
+                child: Text(
+                  name.isNotEmpty ? name[0].toUpperCase() : 'D',
+                  style: AppText.display(38, c: AppColors.maroon),
+                ),
+              ),
       ),
     );
   }
@@ -348,6 +470,17 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const div = Divider(height: 1, color: AppColors.line);
+
+    final name = _profile?['name']?.toString().trim().isNotEmpty == true
+        ? _profile!['name'].toString().trim()
+        : 'Devotee';
+
+    final email = _profile?['email']?.toString() ?? '';
+    final phone = _profile?['phone']?.toString() ?? '';
+    final avatar = _profile?['avatar']?.toString();
+
+    final language = AppServices.session.language == 'hi' ? 'Hindi' : 'English';
+
     return DevScaffold(
       title: 'Profile',
       showBack: false,
@@ -355,56 +488,470 @@ class ProfileScreen extends StatelessWidget {
       body: Column(
         children: [
           const SizedBox(height: 4),
-          Container(
-            width: 84,
-            height: 84,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                  colors: [AppColors.goldLight, AppColors.gold]),
-              border: Border.all(color: AppColors.maroon, width: 2),
-            ),
-            child: Text(AppState.name[0],
-                style: AppText.display(38, c: AppColors.maroon)),
-          ),
+
+          // Profile avatar from API.
+          _profileAvatar(name, avatar),
+
           const SizedBox(height: 10),
-          Text(AppState.name, style: AppText.display(22)),
-          Text('madhvi@gmail.com',
-              style: AppText.body(12.5, c: AppColors.muted)),
-          const SizedBox(height: 20),
+
+          // Dynamic name.
+          Text(
+            name,
+            style: AppText.display(22),
+          ),
+
+          // Dynamic email.
+          Text(
+            email.isNotEmpty ? email : 'Email not added',
+            style: AppText.body(12.5, c: AppColors.muted),
+          ),
+
+          if (phone.isNotEmpty)
+            Text(
+              phone,
+              style: AppText.body(12, c: AppColors.muted),
+            ),
+
+          if (_isLoading) ...[
+            const SizedBox(height: 8),
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ],
+
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              style: AppText.body(12, c: Colors.red),
+              textAlign: TextAlign.center,
+            ),
+            TextButton(
+              onPressed: _loadProfile,
+              child: const Text('Retry'),
+            ),
+          ],
+
+          const SizedBox(height: 12),
+
+          // Edit Profile option.
+          InkWell(
+            onTap: () {
+              Navigator.pushNamed(context, '/profile-update').then((_) {
+                if (mounted) {
+                  _loadProfile();
+                }
+              });
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 11,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.goldLight.o(0.25),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.line),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.edit_outlined,
+                    size: 18,
+                    color: AppColors.maroon,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Edit Profile',
+                    style: AppText.body(
+                      13,
+                      c: AppColors.maroon,
+                      w: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: AppColors.maroon,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Existing menu items remain unchanged.
           DevCard(
             padding: EdgeInsets.zero,
             child: Column(
               children: [
-                _row(context, Icons.auto_stories_rounded, 'My Sankalps',
-                    route: '/my-sankalps'),
+                _row(
+                  context,
+                  Icons.auto_stories_rounded,
+                  'My Sankalps',
+                  route: '/my-sankalps',
+                ),
                 div,
-                _row(context, Icons.shopping_bag_outlined, 'My Purchases',
-                    route: '/purchases'),
+                _row(
+                  context,
+                  Icons.shopping_bag_outlined,
+                  'My Purchases',
+                  route: '/purchases',
+                ),
                 div,
-                _row(context, Icons.notifications_none_rounded, 'Notifications',
-                    route: '/notifications'),
+                _row(
+                  context,
+                  Icons.notifications_none_rounded,
+                  'Notifications',
+                  route: '/notifications',
+                ),
                 div,
-                _row(context, Icons.language_rounded, 'Language',
-                    value: 'English'),
+                _row(
+                  context,
+                  Icons.language_rounded,
+                  'Language',
+                  value: language,
+                ),
                 div,
-                _row(context, Icons.family_restroom_rounded, 'Family Sankalp',
-                    route: '/family'),
+                _row(
+                  context,
+                  Icons.family_restroom_rounded,
+                  'Family Sankalp',
+                  route: '/family',
+                ),
                 div,
-                _row(context, Icons.help_outline_rounded, 'Help & Support'),
+                _row(
+                  context,
+                  Icons.help_outline_rounded,
+                  'Help & Support',
+                ),
                 div,
-                _row(context, Icons.privacy_tip_outlined, 'Terms & Privacy'),
+                _row(
+                  context,
+                  Icons.privacy_tip_outlined,
+                  'Terms & Privacy',
+                ),
                 div,
-                _row(context, Icons.info_outline_rounded, 'About'),
+                _row(
+                  context,
+                  Icons.info_outline_rounded,
+                  'About',
+                ),
                 div,
-                _row(context, Icons.logout_rounded, 'Logout',
-                    route: '/account', danger: true),
+                _row(
+                  context,
+                  Icons.logout_rounded,
+                  'Logout',
+                  route: '/account',
+                  danger: true,
+                ),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class ProfileUpdateScreen extends StatefulWidget {
+  const ProfileUpdateScreen({super.key});
+
+  @override
+  State<ProfileUpdateScreen> createState() => _ProfileUpdateScreenState();
+}
+
+class _ProfileUpdateScreenState extends State<ProfileUpdateScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+
+  String _email = '';
+  String _phone = '';
+  bool _isLoading = true;
+  bool _isSaving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final profile = await AppServices.auth.fetchProfile();
+
+      if (!mounted) return;
+
+      setState(() {
+        _nameController.text = profile['name']?.toString() ?? '';
+        _email = profile['email']?.toString() ?? '';
+        _phone = profile['phone']?.toString() ?? '';
+        _isLoading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        _error = 'Unable to load profile. Please try again.';
+      });
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    if (_isSaving || !_formKey.currentState!.validate()) return;
+
+    final name = _nameController.text.trim();
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      await AppServices.auth.updateName(name);
+
+      AppState.name = name;
+      await AppServices.session.setUserName(name);
+
+      if (!mounted) return;
+
+      showDemoSnack(context, 'Profile updated successfully.');
+
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+
+      showDemoSnack(
+        context,
+        'Unable to update profile. Please try again.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  Widget _readOnlyField({
+    required String label,
+    required String value,
+    required IconData icon,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: AppText.body(
+            13,
+            c: AppColors.ink,
+            w: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 7),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(
+            horizontal: 13,
+            vertical: 15,
+          ),
+          decoration: BoxDecoration(
+            color: AppColors.goldLight.o(0.18),
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(color: AppColors.line),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 19, color: AppColors.muted),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Text(
+                  value.isNotEmpty ? value : 'Not added',
+                  style: AppText.body(13, c: AppColors.muted),
+                ),
+              ),
+              const Icon(
+                Icons.lock_outline_rounded,
+                size: 17,
+                color: AppColors.muted,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DevScaffold(
+      title: 'Edit Profile',
+      subtitle: 'अपनी जानकारी अपडेट करें',
+      bottom: PrimaryButton(
+        label: _isSaving ? 'Saving...' : 'Save Changes',
+        onTap: _isLoading || _isSaving ? () {} : _saveProfile,
+      ),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : _error != null
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style: AppText.body(13, c: Colors.red),
+                      ),
+                      const SizedBox(height: 10),
+                      TextButton(
+                        onPressed: _loadProfile,
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                )
+              : Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 12),
+                      Center(
+                        child: Container(
+                          width: 76,
+                          height: 76,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const LinearGradient(
+                              colors: [
+                                AppColors.goldLight,
+                                AppColors.gold,
+                              ],
+                            ),
+                            border: Border.all(
+                              color: AppColors.maroon,
+                              width: 2,
+                            ),
+                          ),
+                          child: Center(
+                            child: Text(
+                              _nameController.text.trim().isNotEmpty
+                                  ? _nameController.text.trim()[0].toUpperCase()
+                                  : 'D',
+                              style: AppText.display(
+                                34,
+                                c: AppColors.maroon,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      Text(
+                        'Personal Information',
+                        style: AppText.display(18),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'Full Name',
+                        style: AppText.body(
+                          13,
+                          c: AppColors.ink,
+                          w: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 7),
+                      TextFormField(
+                        controller: _nameController,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: InputDecoration(
+                          hintText: 'Enter your full name',
+                          prefixIcon: const Icon(
+                            Icons.person_outline_rounded,
+                          ),
+                          filled: true,
+                          fillColor: Colors.white,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 13,
+                            vertical: 15,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(11),
+                            borderSide: const BorderSide(
+                              color: AppColors.line,
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(11),
+                            borderSide: const BorderSide(
+                              color: AppColors.line,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(11),
+                            borderSide: const BorderSide(
+                              color: AppColors.maroon,
+                            ),
+                          ),
+                        ),
+                        validator: (value) {
+                          final name = value?.trim() ?? '';
+
+                          if (name.isEmpty) {
+                            return 'Please enter your name.';
+                          }
+
+                          if (name.length < 2) {
+                            return 'Name must be at least 2 characters.';
+                          }
+
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 18),
+                      _readOnlyField(
+                        label: 'Email Address',
+                        value: _email,
+                        icon: Icons.email_outlined,
+                      ),
+                      const SizedBox(height: 18),
+                      _readOnlyField(
+                        label: 'Phone Number',
+                        value: _phone,
+                        icon: Icons.phone_outlined,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Email and phone number changes will be available '
+                        'after secure verification.',
+                        style: AppText.body(
+                          12,
+                          c: AppColors.muted,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                  ),
+                ),
     );
   }
 }

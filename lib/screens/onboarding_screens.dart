@@ -34,14 +34,23 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _goNext() async {
     final session = AppServices.session;
     final loggedIn = await AppServices.auth.hasSession();
+
     AppState.name = session.userName ?? 'Devotee';
+
+    // Initialize FCM for an already logged-in user.
+    // This also handles device token refresh/registration.
+    if (loggedIn) {
+      await AppServices.fcm.initialize();
+    }
 
     final next = (loggedIn || session.isGuest)
         ? '/home'
         : session.onboardingDone
             ? '/account'
             : '/onboarding';
+
     if (!mounted) return;
+
     Navigator.pushReplacementNamed(context, next);
   }
 

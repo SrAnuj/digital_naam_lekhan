@@ -26,7 +26,8 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
 
   DateTime? _startedAt;
 
-  final List<int> _milestones = [1008, 5000, 11000, 21000];
+  // Daily Target history fetched from API.
+  List<Map<String, dynamic>> _dailyTargetHistory = [];
 
   final Map<String, int> _progressByDate = {};
 
@@ -112,6 +113,10 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
       final records =
           await SankalpProgressRepository.fetchProgressHistory(sankalpId);
 
+      // Fetch Daily Target history for selected Sankalp.
+      final dailyTargetHistory =
+          await SankalpProgressRepository.fetchDailyTargetHistory(sankalpId);
+
       final Map<String, int> progress = {};
 
       var dailyTotal = 0;
@@ -157,6 +162,8 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
         _target = totalTarget;
         _startedAt = startedAt;
         _dailyAverage = average;
+
+        _dailyTargetHistory = dailyTargetHistory;
 
         _progressByDate
           ..clear()
@@ -312,14 +319,29 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
                         ),
                         child: Column(
                           children: [
-                            for (var i = 0; i < _milestones.length; i++) ...[
-                              _milestoneItem(_milestones[i]),
-                              if (i != _milestones.length - 1)
-                                const Divider(
-                                  height: 1,
-                                  color: AppColors.line,
+                            if (_dailyTargetHistory.isEmpty)
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                child: Text(
+                                  'No daily targets set yet.',
+                                  style: AppText.body(
+                                    13,
+                                    c: AppColors.muted,
+                                  ),
                                 ),
-                            ],
+                              )
+                            else
+                              for (var i = 0;
+                                  i < _dailyTargetHistory.length;
+                                  i++) ...[
+                                _milestoneItem(_dailyTargetHistory[i]),
+                                if (i != _dailyTargetHistory.length - 1)
+                                  const Divider(
+                                    height: 1,
+                                    color: AppColors.line,
+                                  ),
+                              ],
                           ],
                         ),
                       ),
@@ -519,31 +541,59 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
     );
   }
 
-  Widget _milestoneItem(int milestone) {
-    final done = _written >= milestone;
+  // Display one record for each saved Daily Target.
+  Widget _milestoneItem(Map<String, dynamic> milestone) {
+    final targetCount =
+        int.tryParse(milestone['target_count']?.toString() ?? '') ?? 0;
+
+    final effectiveFrom = milestone['effective_from']?.toString() ?? '';
+
+    final date = effectiveFrom.length >= 10
+        ? DateTime.tryParse(effectiveFrom.substring(0, 10))
+        : null;
+
+    final dateText = date == null
+        ? effectiveFrom
+        : '${date.day.toString().padLeft(2, '0')}-'
+            '${date.month.toString().padLeft(2, '0')}-'
+            '${date.year}';
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         children: [
-          Icon(
-            done ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
-            color: done ? AppColors.success : AppColors.gold,
+          const Icon(
+            Icons.flag_rounded,
+            color: AppColors.gold,
           ),
           const SizedBox(width: 12),
-          Text(
-            fmt(milestone),
-            style: AppText.body(
-              14.5,
-              w: done ? FontWeight.w600 : FontWeight.w400,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${fmt(targetCount)} Naam',
+                  style: AppText.body(
+                    14.5,
+                    w: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  dateText,
+                  style: AppText.body(
+                    11.5,
+                    c: AppColors.muted,
+                  ),
+                ),
+              ],
             ),
           ),
-          const Spacer(),
           Text(
-            done ? 'Completed' : 'Upcoming',
+            'Target Set',
             style: AppText.body(
               11.5,
-              c: done ? AppColors.success : AppColors.muted,
+              c: AppColors.muted,
             ),
           ),
         ],

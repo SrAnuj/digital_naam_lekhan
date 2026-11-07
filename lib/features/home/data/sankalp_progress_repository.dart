@@ -235,4 +235,38 @@ class SankalpProgressRepository {
       );
     }
   }
+
+  // ───────────────────── DAILY TARGET HISTORY ─────────────────────
+
+  /// Fetch all daily target records of one Sankalp.
+  ///
+  /// GET /daily-targets/{sankalpId}/history
+  static Future<List<Map<String, dynamic>>> fetchDailyTargetHistory(
+    int sankalpId,
+  ) async {
+    try {
+      _validateSankalpId(sankalpId);
+
+      final response = await AppServices.api.dio.get(
+        '/daily-targets/$sankalpId/history',
+      );
+
+      final body = _responseMap(response.data);
+      final data = body['data'];
+
+      if (data is! List) {
+        throw Exception('Invalid daily target history response.');
+      }
+
+      return data
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    } catch (e) {
+      throw _handleError(
+        e,
+        fallback: 'Unable to load daily target history.',
+      );
+    }
+  }
 }

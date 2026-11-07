@@ -1,7 +1,11 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
+
+import 'notification_navigation_service.dart';
 
 class NotificationService {
   NotificationService._();
@@ -15,6 +19,10 @@ class NotificationService {
   static const String _channelId = 'daily_naam_reminder';
   static const String _channelName = 'Daily Naam Reminder';
 
+  // Separate channel for Laravel FCM notifications.
+  static const String _fcmChannelId = 'fcm_notifications';
+  static const String _fcmChannelName = 'Sankalp Notifications';
+
   static const String _enabledKey = 'daily_reminder_enabled';
   static const String _hourKey = 'daily_reminder_hour';
   static const String _minuteKey = 'daily_reminder_minute';
@@ -25,15 +33,11 @@ class NotificationService {
   Future<void> initialize() async {
     if (_initialized) return;
 
-    // Initialize timezone database.
     tz_data.initializeTimeZones();
-
-    // Current app timezone: India.
     tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
 
-    const androidSettings = AndroidInitializationSettings(
-      '@mipmap/ic_launcher',
-    );
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
 
     const initializationSettings = InitializationSettings(
       android: androidSettings,
@@ -41,9 +45,80 @@ class NotificationService {
 
     await _plugin.initialize(
       settings: initializationSettings,
+      onDidReceiveNotificationResponse: (response) {
+        final payload = response.payload;
+
+        if (payload == null || payload.isEmpty) return;
+
+        try {
+          final decoded = jsonDecode(payload);
+
+          if (decoded is Map) {
+            NotificationNavigationService.instance.handleNotificationPayload(
+              Map<String, dynamic>.from(decoded),
+            );
+          }
+        } catch (e) {
+          debugPrint('Notification payload error: $e');
+        }
+      },
     );
 
     _initialized = true;
+
+    // Check whether app was launched by tapping a local notification.
+    final launchDetails = await _plugin.getNotificationAppLaunchDetails();
+
+    final payload = launchDetails?.notificationResponse?.payload;
+
+    if (launchDetails?.didNotificationLaunchApp == true &&
+        payload != null &&
+        payload.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(payload);
+
+        if (decoded is Map) {
+          await NotificationNavigationService.instance
+              .handleNotificationPayload(
+            Map<String, dynamic>.from(decoded),
+          );
+        }
+      } catch (e) {
+        debugPrint('Notification launch payload error: $e');
+      }
+    }
+  }
+
+  // Display a notification received from Laravel FCM while app is foreground.
+  Future<void> showFcmNotification({
+    required String title,
+    required String body,
+    required Map<String, dynamic> payload,
+  }) async {
+    await initialize();
+
+    const notificationDetails = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _fcmChannelId,
+        _fcmChannelName,
+        channelDescription: 'Notifications about your daily Sankalp.',
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+        playSound: true,
+      ),
+    );
+
+    final notificationId =
+        DateTime.now().millisecondsSinceEpoch.remainder(2147483647);
+
+    await _plugin.show(
+      id: notificationId,
+      title: title,
+      body: body,
+      notificationDetails: notificationDetails,
+      payload: jsonEncode(payload),
+    );
   }
 
   Future<bool> saveDailyReminder({
@@ -60,7 +135,6 @@ class NotificationService {
       return false;
     }
 
-    // Android 13+ notification permission.
     await androidPlugin.requestNotificationsPermission();
 
     final notificationsEnabled =
@@ -70,8 +144,6 @@ class NotificationService {
       return false;
     }
 
-    // Exact alarm permission is optional.
-    // If denied, use inexact scheduling as a fallback.
     final exactPermission =
         await androidPlugin.requestExactAlarmsPermission() ?? false;
 
@@ -92,7 +164,6 @@ class NotificationService {
       minute,
     );
 
-    // If today's selected time has passed, start tomorrow.
     if (!scheduledDate.isAfter(now)) {
       scheduledDate = scheduledDate.add(const Duration(days: 1));
     }
@@ -117,7 +188,7 @@ class NotificationService {
       androidScheduleMode: scheduleMode,
       matchDateTimeComponents: DateTimeComponents.time,
     );
-    // Save the selection only after scheduling succeeds.
+
     final prefs = await SharedPreferences.getInstance();
 
     await prefs.setBool(_enabledKey, true);

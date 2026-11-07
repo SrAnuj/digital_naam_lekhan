@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 
+import 'core/services/notification_navigation_service.dart';
+import 'core/services/notification_service.dart';
 import 'core/services/app_services.dart';
 import 'firebase_options.dart';
 import 'routes.dart';
@@ -19,6 +21,12 @@ Future<void> main() async {
 
   // Token storage, API client, auth repository, local session flags
   await AppServices.init();
+
+  // Initialize notification tap handling
+  await NotificationNavigationService.instance.initialize();
+
+  // Initialize local notification service
+  await NotificationService.instance.initialize();
 
   // Keep the app in portrait mode
   await SystemChrome.setPreferredOrientations([
@@ -42,6 +50,7 @@ class NaamLekhanApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: NotificationNavigationService.navigatorKey,
       title: 'Digital Naam Lekhan',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),

@@ -1,11 +1,12 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
-import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../network/api_client.dart';
+import 'notification_service.dart';
 
 class FcmService {
   FcmService(this._api);
@@ -15,6 +16,8 @@ class FcmService {
   static const String _deviceIdKey = 'fcm_registered_device_id';
 
   StreamSubscription<String>? _tokenSubscription;
+  StreamSubscription<RemoteMessage>? _messageSubscription;
+
   bool _initialized = false;
 
   String? get _platform {
@@ -65,6 +68,15 @@ class FcmService {
       }
 
       if (!_initialized) {
+        // App is open: show FCM notification using local notification plugin.
+        _messageSubscription = FirebaseMessaging.onMessage.listen(
+          _handleForegroundMessage,
+          onError: (Object error) {
+            debugPrint('FCM foreground listener error: $error');
+          },
+        );
+
+        // Firebase token can change, so register the new token with Laravel.
         _tokenSubscription = messaging.onTokenRefresh.listen((newToken) {
           _registerToken(newToken).catchError((error) {
             debugPrint('FCM token refresh error: $error');
@@ -77,6 +89,28 @@ class FcmService {
       debugPrint('FCM initialization completed.');
     } catch (e) {
       debugPrint('FCM initialization error: $e');
+    }
+  }
+
+  Future<void> _handleForegroundMessage(RemoteMessage message) async {
+    try {
+      final title = message.notification?.title ??
+          message.data['title']?.toString() ??
+          'Digital Naam Lekhan';
+
+      final body = message.notification?.body ??
+          message.data['body']?.toString() ??
+          'You have a new Sankalp notification.';
+
+      await NotificationService.instance.showFcmNotification(
+        title: title,
+        body: body,
+        payload: Map<String, dynamic>.from(message.data),
+      );
+
+      debugPrint('Foreground FCM notification displayed.');
+    } catch (e) {
+      debugPrint('Unable to display foreground FCM notification: $e');
     }
   }
 
@@ -132,7 +166,10 @@ class FcmService {
 
   Future<void> deactivateDevice() async {
     await _tokenSubscription?.cancel();
+    await _messageSubscription?.cancel();
+
     _tokenSubscription = null;
+    _messageSubscription = null;
     _initialized = false;
 
     final prefs = await SharedPreferences.getInstance();

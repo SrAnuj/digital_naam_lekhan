@@ -303,6 +303,26 @@ class AuthRepository {
   // ───────────────────────── PROFILE ─────────────────────────
 
   /// Saves the user's name on the server (PATCH /profile).
+  // ───────────────────────── PROFILE ─────────────────────────
+
+  /// Fetches the authenticated user's profile (GET /profile).
+  Future<Map<String, dynamic>> fetchProfile() async {
+    try {
+      final response = await _api.dio.get('/profile');
+
+      final body = Map<String, dynamic>.from(response.data as Map);
+
+      if (body['success'] != true || body['data'] is! Map) {
+        throw AuthFailure('Could not load profile details.');
+      }
+
+      return Map<String, dynamic>.from(body['data'] as Map);
+    } on DioException catch (e) {
+      throw AuthFailure(authErrorMessage(e));
+    }
+  }
+
+  /// Saves the user's name on the server (PATCH /profile).
   Future<void> updateName(String name) async {
     await _api.dio.patch(
       '/profile',
