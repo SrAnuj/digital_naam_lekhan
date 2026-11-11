@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'screens/auth_screens.dart';
 import 'screens/gallery_screen.dart';
 import 'screens/home_library_screens.dart';
@@ -9,11 +10,15 @@ import 'screens/sankalp_setup_screens.dart';
 import 'screens/settings_screens.dart';
 import 'screens/writing_screens.dart';
 
+// CMS Pages
+import 'features/pages/presentation/screens/cms_page_screen.dart';
+
 class ScreenEntry {
   final int no;
   final String title;
   final String route;
   final WidgetBuilder builder;
+
   const ScreenEntry(this.no, this.title, this.route, this.builder);
 }
 
@@ -66,17 +71,26 @@ final List<ScreenEntry> screenList = [
 
 final Map<String, WidgetBuilder> appRoutes = {
   for (final s in screenList) s.route: s.builder,
+
   '/gallery': (_) => const GalleryScreen(),
 
-  // Phone login flow (opened from Create Account -> Continue with Mobile)
+  // Phone login flow
   '/phone': (_) => const PhoneLoginScreen(),
   '/otp': (_) => const OtpScreen(),
   '/profile-setup': (_) => const ProfileSetupScreen(),
+
+  // CMS Pages
+  '/about': (_) => const CmsPageScreen(slug: 'about'),
+  '/help-support': (_) => const CmsPageScreen(slug: 'help-support'),
+  '/terms-conditions': (_) => const CmsPageScreen(slug: 'terms-and-conditions'),
+  '/privacy-policy': (_) => const CmsPageScreen(slug: 'privacy-policy'),
 };
 
 Route<dynamic>? onGenerateRoute(RouteSettings settings) {
   final builder = appRoutes[settings.name];
+
   if (builder == null) return null;
+
   return PageRouteBuilder<void>(
     settings: settings,
     transitionDuration: const Duration(milliseconds: 260),

@@ -1,6 +1,7 @@
 import '../../features/auth/data/auth_repository.dart';
 import '../../features/auth/data/session_store.dart';
 import '../../features/auth/data/token_storage.dart';
+import '../../features/pages/data/page_repository.dart';
 import '../network/api_client.dart';
 import 'fcm_service.dart';
 
@@ -13,6 +14,7 @@ class AppServices {
   static late final AuthRepository auth;
   static late final SessionStore session;
   static late final FcmService fcm;
+  static late final PageRepository pages;
 
   /// Initializes all application-wide services.
   static Future<void> init() async {
@@ -32,7 +34,10 @@ class AppServices {
       fcmService: fcm,
     );
 
-    // 5. Load locally saved app session and preferences.
+    // 5. CMS Pages repository.
+    pages = PageRepository(api);
+
+    // 6. Load locally saved app session and preferences.
     session = await SessionStore.load();
   }
 }

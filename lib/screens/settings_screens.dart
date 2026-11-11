@@ -587,6 +587,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 16),
 
           // Existing menu items remain unchanged.
+
           DevCard(
             padding: EdgeInsets.zero,
             child: Column(
@@ -630,18 +631,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   context,
                   Icons.help_outline_rounded,
                   'Help & Support',
+                  route: '/help-support',
                 ),
                 div,
                 _row(
                   context,
                   Icons.privacy_tip_outlined,
                   'Terms & Privacy',
+                  route: '/terms-conditions',
                 ),
                 div,
                 _row(
                   context,
                   Icons.info_outline_rounded,
                   'About',
+                  route: '/about',
                 ),
                 div,
                 _row(
