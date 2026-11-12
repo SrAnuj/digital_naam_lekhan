@@ -3,9 +3,17 @@ import 'package:flutter/material.dart';
 import '../data.dart';
 import '../theme.dart';
 import '../widgets.dart';
+
 import 'package:sankalp/features/home/data/home_repository.dart';
 import 'package:sankalp/features/home/data/naam_library_repository.dart';
+
+import 'package:sankalp/features/jap/data/jap_session_repository.dart';
+import 'package:sankalp/features/jap/data/models/jap_session_summary_model.dart';
+
 import '../core/services/notification_navigation_service.dart';
+
+// ───────────────────────── 5. HOME DASHBOARD ─────────────────────────
+
 // ───────────────────────── 5. HOME DASHBOARD ─────────────────────────
 
 class HomeScreen extends StatefulWidget {
@@ -23,7 +31,11 @@ class _HomeScreenState extends State<HomeScreen> {
   String _displayName = AppState.name;
   Map<String, dynamic>? _currentSankalp;
 
-  @override
+  // Jap Summary API state.
+  JapSessionSummaryModel? _japSummary;
+  bool _japSummaryLoading = false;
+  String? _japSummaryError;
+
   @override
   void initState() {
     super.initState();
@@ -35,6 +47,8 @@ class _HomeScreenState extends State<HomeScreen> {
       NotificationNavigationService.instance.processPendingNotification();
     });
   }
+
+  // ───────────────────── HOME API ─────────────────────
 
   Future<void> _loadHome() async {
     if (mounted) {
@@ -52,6 +66,21 @@ class _HomeScreenState extends State<HomeScreen> {
       final userData = data['user'];
       final sankalpData = data['current_sankalp'];
 
+      final currentSankalp =
+          sankalpData is Map ? Map<String, dynamic>.from(sankalpData) : null;
+
+      int? sankalpId;
+
+      final rawId = currentSankalp?['id'];
+
+      if (rawId is int) {
+        sankalpId = rawId;
+      } else if (rawId is num) {
+        sankalpId = rawId.toInt();
+      } else if (rawId != null) {
+        sankalpId = int.tryParse(rawId.toString());
+      }
+
       setState(() {
         if (userData is Map) {
           final name = userData['name']?.toString().trim();
@@ -61,12 +90,14 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         }
 
-        _currentSankalp =
-            sankalpData is Map ? Map<String, dynamic>.from(sankalpData) : null;
+        _currentSankalp = currentSankalp;
 
         _homeLoaded = true;
         _homeLoading = false;
       });
+
+      // Load Jap Summary for the active Sankalp.
+      await _loadJapSummary(sankalpId);
     } catch (e) {
       if (!mounted) return;
 
@@ -77,6 +108,89 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ───────────────────── JAP SUMMARY API ─────────────────────
+
+  Future<void> _loadJapSummary(int? sankalpId) async {
+    if (sankalpId == null) {
+      if (!mounted) return;
+
+      setState(() {
+        _japSummary = null;
+        _japSummaryLoading = false;
+        _japSummaryError = null;
+      });
+
+      return;
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _japSummaryLoading = true;
+      _japSummaryError = null;
+    });
+
+    try {
+      final summaries = await JapSessionRepository.fetchSummary(
+        sankalpId: sankalpId,
+      );
+
+      if (!mounted) return;
+
+      JapSessionSummaryModel? summary;
+
+      for (final item in summaries) {
+        if (item.sankalpId == sankalpId) {
+          summary = item;
+          break;
+        }
+      }
+
+      setState(() {
+        _japSummary = summary;
+        _japSummaryLoading = false;
+        _japSummaryError = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _japSummaryError = e.toString().replaceFirst('Exception: ', '');
+        _japSummaryLoading = false;
+      });
+    }
+  }
+
+  // ───────────────────── JAP SUMMARY ITEM ─────────────────────
+
+  Widget _japSummaryItem(String label, int value) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            fmt(value),
+            style: AppText.display(
+              20,
+              c: AppColors.maroon,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: AppText.body(
+              10.5,
+              c: AppColors.muted,
+              w: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ───────────────────── QUICK NAVIGATION ─────────────────────
+
   Widget _quick(
     BuildContext context,
     IconData icon,
@@ -86,16 +200,33 @@ class _HomeScreenState extends State<HomeScreen> {
     return Expanded(
       child: DevCard(
         margin: const EdgeInsets.symmetric(horizontal: 4),
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
-        onTap: () => Navigator.pushNamed(context, route),
+        padding: const EdgeInsets.symmetric(
+          vertical: 14,
+          horizontal: 6,
+        ),
+        onTap: () async {
+          await Navigator.pushNamed(context, route);
+
+          // Refresh dashboard after returning from Jap Counter.
+          if (route == '/jap' && mounted) {
+            await _loadHome();
+          }
+        },
         child: Column(
           children: [
-            Icon(icon, color: AppColors.maroon, size: 26),
+            Icon(
+              icon,
+              color: AppColors.maroon,
+              size: 26,
+            ),
             const SizedBox(height: 6),
             Text(
               label,
               textAlign: TextAlign.center,
-              style: AppText.body(11, w: FontWeight.w500),
+              style: AppText.body(
+                11,
+                w: FontWeight.w500,
+              ),
             ),
           ],
         ),
@@ -103,10 +234,163 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ───────────────────── JAP SUMMARY CARD ─────────────────────
+
+  Widget _buildJapSummaryCard() {
+    return DevCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.radio_button_checked,
+                color: AppColors.maroon,
+                size: 22,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Jap Summary',
+                  style: AppText.body(
+                    14,
+                    c: AppColors.ink,
+                    w: FontWeight.w600,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Refresh Jap Summary',
+                visualDensity: VisualDensity.compact,
+                onPressed: _japSummaryLoading
+                    ? null
+                    : () {
+                        final rawId = _currentSankalp?['id'];
+
+                        final id = rawId is num
+                            ? rawId.toInt()
+                            : int.tryParse(rawId?.toString() ?? '');
+
+                        _loadJapSummary(id);
+                      },
+                icon: const Icon(
+                  Icons.refresh_rounded,
+                  color: AppColors.maroon,
+                  size: 20,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (_japSummaryLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: CircularProgressIndicator(
+                  color: AppColors.maroon,
+                  strokeWidth: 2,
+                ),
+              ),
+            )
+          else if (_japSummaryError != null)
+            Column(
+              children: [
+                Text(
+                  'Unable to load Jap Summary.',
+                  textAlign: TextAlign.center,
+                  style: AppText.body(
+                    12,
+                    c: AppColors.muted,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: () {
+                    final rawId = _currentSankalp?['id'];
+
+                    final id = rawId is num
+                        ? rawId.toInt()
+                        : int.tryParse(rawId?.toString() ?? '');
+
+                    _loadJapSummary(id);
+                  },
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Retry'),
+                ),
+              ],
+            )
+          else if (_japSummary == null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Center(
+                child: Text(
+                  'No Jap sessions recorded yet.',
+                  style: AppText.body(
+                    12,
+                    c: AppColors.muted,
+                  ),
+                ),
+              ),
+            )
+          else
+            Column(
+              children: [
+                Row(
+                  children: [
+                    _japSummaryItem(
+                      "Today's Jap",
+                      _japSummary!.todayNaam,
+                    ),
+                    _japSummaryItem(
+                      'Total Jap',
+                      _japSummary!.totalNaam,
+                    ),
+                    _japSummaryItem(
+                      'Completed Malas',
+                      _japSummary!.totalCompletedMalas,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                const Divider(
+                  color: AppColors.creamDark,
+                  height: 1,
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Total Sessions: ${fmt(_japSummary!.totalSessions)}',
+                        style: AppText.body(
+                          11,
+                          c: AppColors.muted,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      'Today: ${fmt(_japSummary!.todaySessions)} sessions',
+                      style: AppText.body(
+                        11,
+                        c: AppColors.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ───────────────────── BUILD ─────────────────────
+
   @override
   Widget build(BuildContext context) {
     final d = AppState.deity;
     final sankalp = _currentSankalp;
+
     final hasActiveSankalp = _homeLoaded && sankalp != null;
 
     final naamHindi = sankalp?['name_hindi']?.toString().trim();
@@ -114,7 +398,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final displayNaam =
         naamHindi != null && naamHindi.isNotEmpty ? naamHindi : (d?.hi ?? '');
 
-    // AppState.target is now a non-nullable int.
     final int target = _homeLoaded
         ? (sankalp?['target_count'] as num?)?.toInt() ?? 0
         : AppState.target;
@@ -124,6 +407,7 @@ class _HomeScreenState extends State<HomeScreen> {
         : AppState.written;
 
     final int safeTarget = target > 0 ? target : 0;
+
     final int safeWritten = written.clamp(0, safeTarget).toInt();
 
     final double pct = safeTarget > 0
@@ -131,6 +415,7 @@ class _HomeScreenState extends State<HomeScreen> {
         : 0.0;
 
     final trimmedName = _displayName.trim();
+
     final initial = trimmedName.isNotEmpty ? trimmedName[0].toUpperCase() : 'U';
 
     final dailyGoal = AppState.todayGoal;
@@ -143,9 +428,16 @@ class _HomeScreenState extends State<HomeScreen> {
               child: SingleChildScrollView(
                 child: Column(
                   children: [
+                    // ───────── HEADER ─────────
+
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 70),
+                      padding: const EdgeInsets.fromLTRB(
+                        20,
+                        0,
+                        20,
+                        70,
+                      ),
                       decoration: const BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
@@ -202,24 +494,33 @@ class _HomeScreenState extends State<HomeScreen> {
                                   color: AppColors.goldLight,
                                   size: 26,
                                 ),
-                                onPressed: () => Navigator.pushNamed(
-                                  context,
-                                  '/notifications',
-                                ),
+                                onPressed: () {
+                                  Navigator.pushNamed(
+                                    context,
+                                    '/notifications',
+                                  );
+                                },
                               ),
                             ],
                           ),
                         ),
                       ),
                     ),
+
                     if (_homeLoading)
                       const LinearProgressIndicator(
                         color: AppColors.maroon,
                         minHeight: 2,
                       ),
+
                     if (_homeError != null)
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                        padding: const EdgeInsets.fromLTRB(
+                          20,
+                          12,
+                          20,
+                          0,
+                        ),
                         child: Row(
                           children: [
                             const Icon(
@@ -244,17 +545,26 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ),
                       ),
+
+                    // ───────── DASHBOARD CONTENT ─────────
+
                     Transform.translate(
                       offset: const Offset(0, -52),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                        ),
                         child: Column(
                           children: [
+                            // Current Sankalp Card.
+
                             DevCard(
-                              onTap: () => Navigator.pushNamed(
-                                context,
-                                '/progress',
-                              ),
+                              onTap: () {
+                                Navigator.pushNamed(
+                                  context,
+                                  '/progress',
+                                );
+                              },
                               padding: const EdgeInsets.all(18),
                               child: Column(
                                 children: [
@@ -341,7 +651,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ],
                               ),
                             ),
+
                             const SizedBox(height: 14),
+
+                            // Today's Goal Card.
+
                             DevCard(
                               child: Column(
                                 children: [
@@ -363,15 +677,21 @@ class _HomeScreenState extends State<HomeScreen> {
                                   PrimaryButton(
                                     label: 'Continue Writing',
                                     trailing: Icons.arrow_forward_rounded,
-                                    onTap: () => Navigator.pushNamed(
-                                      context,
-                                      '/writing',
-                                    ),
+                                    onTap: () {
+                                      Navigator.pushNamed(
+                                        context,
+                                        '/writing',
+                                      );
+                                    },
                                   ),
                                 ],
                               ),
                             ),
+
                             const SizedBox(height: 14),
+
+                            // Quick Navigation.
+
                             Row(
                               children: [
                                 _quick(
@@ -394,13 +714,25 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               ],
                             ),
+
                             const SizedBox(height: 14),
+
+                            // Jap Summary Card.
+
+                            _buildJapSummaryCard(),
+
+                            const SizedBox(height: 14),
+
+                            // Gift a Naam Pustika.
+
                             DevCard(
                               color: AppColors.creamDark.o(0.55),
-                              onTap: () => Navigator.pushNamed(
-                                context,
-                                '/digital-pustika',
-                              ),
+                              onTap: () {
+                                Navigator.pushNamed(
+                                  context,
+                                  '/digital-pustika',
+                                );
+                              },
                               child: Row(
                                 children: [
                                   const Icon(

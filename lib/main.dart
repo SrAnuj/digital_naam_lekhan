@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'core/services/notification_navigation_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/app_services.dart';
+import 'core/services/offline_progress_sync_service.dart';
 import 'firebase_options.dart';
 import 'routes.dart';
 import 'theme.dart';
@@ -21,6 +22,9 @@ Future<void> main() async {
 
   // Token storage, API client, auth repository, local session flags
   await AppServices.init();
+
+  // Initialize automatic offline progress synchronization
+  await OfflineProgressSyncService.instance.initialize();
 
   // Initialize notification tap handling
   await NotificationNavigationService.instance.initialize();

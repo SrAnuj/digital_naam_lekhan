@@ -7,8 +7,18 @@ import '../data.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../features/home/data/sankalp_progress_repository.dart';
+import 'package:uuid/uuid.dart';
+
+import '../features/jap/data/jap_session_repository.dart';
+
+import '../features/jap/data/models/jap_session_model.dart';
+import '../features/jap/data/models/jap_session_summary_model.dart';
+
+import '../core/network/api_save_exception.dart';
+import '../core/services/offline_progress_service.dart';
 
 // ───────────────────────── SHARED PROGRESS HELPERS ─────────────────────────
+// ---------------- SHARED PROGRESS HELPERS ----------------
 
 String _todayDate() {
   final now = DateTime.now();
@@ -74,8 +84,11 @@ Future<void> _loadTodaySummary() async {
   }
 }
 
-/// Writing aur Jap dono isi API se progress save karte hain.
-Future<Map<String, dynamic>> _saveNaamProgress(int count) async {
+/// Writing progress ko unique request ID ke saath backend par save karta hai.
+Future<Map<String, dynamic>> _saveNaamProgress(
+  int count,
+  String requestId,
+) async {
   final sankalpId = AppState.createdSankalpId;
 
   if (sankalpId == null || sankalpId <= 0) {
@@ -88,14 +101,15 @@ Future<Map<String, dynamic>> _saveNaamProgress(int count) async {
     throw Exception('Please enter a valid Naam count.');
   }
 
-  return SankalpProgressRepository.saveProgress(
+  return SankalpProgressRepository.saveWritingProgress(
     sankalpId: sankalpId,
     count: count,
     progressDate: _todayDate(),
+    requestId: requestId,
   );
 }
 
-/// API save successful hone ke baad local progress update hota hai.
+/// Successful API save ke baad local progress update karta hai.
 void _updateLocalProgress(
   Map<String, dynamic> response,
   int savedCount,
@@ -110,7 +124,6 @@ void _updateLocalProgress(
     AppState.todayWritten += savedCount;
   }
 
-  // ResourceCollection ke unknown response data ko total count nahi maante.
   AppState.written += savedCount;
 }
 
@@ -129,7 +142,6 @@ double _dailyProgress(int completed, int? goal) {
 
   return (completed / goal).clamp(0.0, 1.0).toDouble();
 }
-
 // ───────────────────────── 11. WRITING SCREEN ─────────────────────────
 
 class _InkPainter extends CustomPainter {
@@ -228,12 +240,22 @@ class _WritingScreenState extends State<WritingScreen> {
       return;
     }
 
+    final sankalpId = AppState.createdSankalpId;
+
+    if (sankalpId == null || sankalpId <= 0) {
+      showDemoSnack(context, 'Your active Sankalp was not found.');
+      return;
+    }
+
     setState(() {
       _isSaving = true;
     });
 
+    final requestId = const Uuid().v4();
+    final progressDate = _todayDate();
+
     try {
-      final response = await _saveNaamProgress(count);
+      final response = await _saveNaamProgress(count, requestId);
 
       if (!mounted) return;
 
@@ -251,6 +273,53 @@ class _WritingScreenState extends State<WritingScreen> {
       }
     } catch (error) {
       if (!mounted) return;
+
+      if (error is ApiSaveException && error.isRetryable) {
+        try {
+          await OfflineProgressService.instance.enqueue(
+            action: 'writing_progress',
+            requestId: requestId,
+            payload: {
+              'sankalp_id': sankalpId,
+              'count': count,
+              'progress_date': progressDate,
+            },
+          );
+
+          if (!mounted) return;
+
+          // Queue save hone ke baad local progress sirf ek baar update.
+          _updateLocalProgress({}, count);
+
+          setState(() {
+            _strokes.clear();
+            _isSaving = false;
+          });
+
+          if (_isDailyGoalCompleted()) {
+            Navigator.pushNamed(context, '/daily-complete');
+          } else {
+            showDemoSnack(
+              context,
+              '$count Naam saved offline. Pending sync.',
+            );
+          }
+
+          return;
+        } catch (queueError) {
+          if (!mounted) return;
+
+          setState(() {
+            _isSaving = false;
+          });
+
+          showDemoSnack(
+            context,
+            'Offline save failed: ${_progressError(queueError)}',
+          );
+          return;
+        }
+      }
 
       setState(() {
         _isSaving = false;
@@ -748,6 +817,16 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
     setState(() {});
   }
 
+  int? get _activeSankalpId {
+    final id = AppState.createdSankalpId;
+
+    if (id == null || id <= 0) return null;
+
+    return id;
+  }
+
+  // ───────────────────── SAVE JAP SESSION ─────────────────────
+
   Future<void> _save() async {
     if (_isSaving) return;
 
@@ -757,17 +836,32 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
     }
 
     final savedCount = _count;
+    final sankalpId = _activeSankalpId;
+
+    if (sankalpId == null) {
+      showDemoSnack(context, 'Your active Sankalp was not found.');
+      return;
+    }
 
     setState(() {
       _isSaving = true;
     });
 
+    final requestId = const Uuid().v4();
+    final activityDate = _todayDate();
+
     try {
-      final response = await _saveNaamProgress(savedCount);
+      await JapSessionRepository.saveSession(
+        sankalpId: sankalpId,
+        count: savedCount,
+        requestId: requestId,
+        activityDate: activityDate,
+      );
 
       if (!mounted) return;
 
-      _updateLocalProgress(response, savedCount);
+      AppState.todayWritten += savedCount;
+      AppState.written += savedCount;
 
       setState(() {
         _count = 0;
@@ -777,10 +871,63 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
       if (_isDailyGoalCompleted()) {
         Navigator.pushNamed(context, '/daily-complete');
       } else {
-        showDemoSnack(context, '$savedCount Jap saved successfully 🙏');
+        showDemoSnack(
+          context,
+          '$savedCount Jap saved successfully 🙏',
+        );
       }
     } catch (error) {
       if (!mounted) return;
+
+      if (error is ApiSaveException && error.isRetryable) {
+        try {
+          await OfflineProgressService.instance.enqueue(
+            action: 'jap_session',
+            requestId: requestId,
+            payload: {
+              'sankalp_id': sankalpId,
+              'count': savedCount,
+              'activity_date': activityDate,
+              'mala_size': 108,
+              'duration_seconds': 0,
+            },
+          );
+
+          if (!mounted) return;
+
+          // Local combined progress sirf ek baar update hoga.
+          AppState.todayWritten += savedCount;
+          AppState.written += savedCount;
+
+          setState(() {
+            _count = 0;
+            _isSaving = false;
+          });
+
+          if (_isDailyGoalCompleted()) {
+            Navigator.pushNamed(context, '/daily-complete');
+          } else {
+            showDemoSnack(
+              context,
+              '$savedCount Jap saved offline. Pending sync.',
+            );
+          }
+
+          return;
+        } catch (queueError) {
+          if (!mounted) return;
+
+          setState(() {
+            _isSaving = false;
+          });
+
+          showDemoSnack(
+            context,
+            'Offline save failed: ${_progressError(queueError)}',
+          );
+          return;
+        }
+      }
 
       setState(() {
         _isSaving = false;
@@ -792,6 +939,447 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
       );
     }
   }
+
+  // ───────────────────── JAP SUMMARY ─────────────────────
+
+  Future<void> _showJapSummary() async {
+    final sankalpId = _activeSankalpId;
+
+    if (sankalpId == null) {
+      showDemoSnack(context, 'Your active Sankalp was not found.');
+      return;
+    }
+
+    final future = JapSessionRepository.fetchSummary(
+      sankalpId: sankalpId,
+    );
+
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Container(
+            height: MediaQuery.of(sheetContext).size.height * 0.58,
+            padding: const EdgeInsets.all(20),
+            decoration: const BoxDecoration(
+              color: Color(0xFFFFF1CC),
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.maroon.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Jap Summary',
+                  style: AppText.display(
+                    24,
+                    c: AppColors.maroon,
+                  ),
+                ),
+                Text(
+                  'Your Naam Jap progress',
+                  style: AppText.body(
+                    12,
+                    c: AppColors.muted,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Expanded(
+                  child: FutureBuilder<List<JapSessionSummaryModel>>(
+                    future: future,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            color: AppColors.maroon,
+                          ),
+                        );
+                      }
+
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Text(
+                            'Unable to load Jap Summary.\n${snapshot.error}',
+                            textAlign: TextAlign.center,
+                            style: AppText.body(12),
+                          ),
+                        );
+                      }
+
+                      final summaries = snapshot.data ?? [];
+
+                      JapSessionSummaryModel? summary;
+
+                      for (final item in summaries) {
+                        if (item.sankalpId == sankalpId) {
+                          summary = item;
+                          break;
+                        }
+                      }
+
+                      if (summary == null) {
+                        return Center(
+                          child: Text(
+                            'No Jap sessions recorded yet.',
+                            style: AppText.body(
+                              13,
+                              c: AppColors.muted,
+                            ),
+                          ),
+                        );
+                      }
+
+                      return ListView(
+                        children: [
+                          _summaryTile(
+                            'Today\'s Jap',
+                            summary.todayNaam,
+                            Icons.today_rounded,
+                          ),
+                          _summaryTile(
+                            'Total Jap',
+                            summary.totalNaam,
+                            Icons.radio_button_checked,
+                          ),
+                          _summaryTile(
+                            'Completed Malas',
+                            summary.totalCompletedMalas,
+                            Icons.brightness_7_rounded,
+                          ),
+                          _summaryTile(
+                            'Extra Naam',
+                            summary.totalExtraNaam,
+                            Icons.add_circle_outline_rounded,
+                          ),
+                          _summaryTile(
+                            'Total Sessions',
+                            summary.totalSessions,
+                            Icons.history_rounded,
+                          ),
+                          _summaryTile(
+                            'Today Sessions',
+                            summary.todaySessions,
+                            Icons.calendar_today_rounded,
+                          ),
+                          _summaryTile(
+                            'Total Duration',
+                            summary.totalDurationSeconds,
+                            Icons.timer_outlined,
+                            suffix: ' sec',
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _summaryTile(
+    String label,
+    int value,
+    IconData icon, {
+    String suffix = '',
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 13,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            color: AppColors.maroon,
+            size: 21,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: AppText.body(
+                12,
+                c: AppColors.ink,
+              ),
+            ),
+          ),
+          Text(
+            '${fmt(value)}$suffix',
+            style: AppText.body(
+              15,
+              c: AppColors.maroon,
+              w: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ───────────────────── JAP HISTORY ─────────────────────
+
+  Future<void> _showJapHistory() async {
+    final sankalpId = _activeSankalpId;
+
+    if (sankalpId == null) {
+      showDemoSnack(context, 'Your active Sankalp was not found.');
+      return;
+    }
+
+    final future = JapSessionRepository.fetchHistory(
+      sankalpId: sankalpId,
+      page: 1,
+      perPage: 20,
+    );
+
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Container(
+            height: MediaQuery.of(sheetContext).size.height * 0.72,
+            padding: const EdgeInsets.all(20),
+            decoration: const BoxDecoration(
+              color: Color(0xFFFFF1CC),
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.maroon.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Jap History',
+                  style: AppText.display(
+                    24,
+                    c: AppColors.maroon,
+                  ),
+                ),
+                Text(
+                  'Your previous Jap sessions',
+                  style: AppText.body(
+                    12,
+                    c: AppColors.muted,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: FutureBuilder<List<JapSessionModel>>(
+                    future: future,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            color: AppColors.maroon,
+                          ),
+                        );
+                      }
+
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Text(
+                            'Unable to load Jap History.\n${snapshot.error}',
+                            textAlign: TextAlign.center,
+                            style: AppText.body(12),
+                          ),
+                        );
+                      }
+
+                      final sessions = snapshot.data ?? [];
+
+                      if (sessions.isEmpty) {
+                        return Center(
+                          child: Text(
+                            'No Jap history available yet.',
+                            style: AppText.body(
+                              13,
+                              c: AppColors.muted,
+                            ),
+                          ),
+                        );
+                      }
+
+                      return ListView.separated(
+                        itemCount: sessions.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final session = sessions[index];
+                          final details = session.japSession;
+
+                          return Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.75),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: AppColors.creamDark,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.history_rounded,
+                                      color: AppColors.maroon,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        _formatActivityDate(
+                                          session.activityDate,
+                                        ),
+                                        style: AppText.body(
+                                          13,
+                                          c: AppColors.maroon,
+                                          w: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      '${fmt(session.count)} Naam',
+                                      style: AppText.body(
+                                        14,
+                                        c: AppColors.maroon,
+                                        w: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (details != null) ...[
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _historyDetail(
+                                          'Malas',
+                                          details.completedMalas,
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: _historyDetail(
+                                          'Extra Naam',
+                                          details.extraNaam,
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: _historyDetail(
+                                          'Duration',
+                                          details.durationSeconds,
+                                          suffix: ' sec',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Session #${session.id}',
+                                  style: AppText.body(
+                                    10,
+                                    c: AppColors.muted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _historyDetail(
+    String label,
+    int value, {
+    String suffix = '',
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: AppText.body(
+            10,
+            c: AppColors.muted,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          '${fmt(value)}$suffix',
+          style: AppText.body(
+            12,
+            c: AppColors.ink,
+            w: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatActivityDate(String value) {
+    final date = DateTime.tryParse(value);
+
+    if (date == null) return value;
+
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
+
+    return '$day-$month-$year';
+  }
+
+  // ───────────────────── BUILD ─────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -835,6 +1423,8 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
                 style: AppText.hindi(44),
               ),
               const Spacer(),
+
+              // Existing Jap Bead Counter.
               GestureDetector(
                 onTap: _isSaving
                     ? null
@@ -842,7 +1432,7 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
                         HapticFeedback.lightImpact();
 
                         setState(() {
-                          // Goal complete hone par bhi counting continue rahegi.
+                          // Counting continues even after daily goal.
                           _count++;
                         });
                       },
@@ -876,12 +1466,17 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
                   ),
                 ),
               ),
+
               const Spacer(),
+
               Text(
                 AppState.isDailySummaryLoading
                     ? 'Loading daily progress...'
                     : "Today's Goal",
-                style: AppText.body(12.5, c: AppColors.muted),
+                style: AppText.body(
+                  12.5,
+                  c: AppColors.muted,
+                ),
               ),
               Text(
                 goal == null || goal <= 0
@@ -890,7 +1485,60 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
                 textAlign: TextAlign.center,
                 style: AppText.display(22),
               ),
-              const SizedBox(height: 18),
+
+              const SizedBox(height: 12),
+
+              // Summary and History actions.
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _isSaving ? null : _showJapSummary,
+                        icon: const Icon(
+                          Icons.analytics_outlined,
+                          size: 18,
+                        ),
+                        label: const Text('Summary'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.maroon,
+                          side: const BorderSide(
+                            color: AppColors.maroon,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 10,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _isSaving ? null : _showJapHistory,
+                        icon: const Icon(
+                          Icons.history_rounded,
+                          size: 18,
+                        ),
+                        label: const Text('History'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.maroon,
+                          side: const BorderSide(
+                            color: AppColors.maroon,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 10,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Existing Reset and Save buttons.
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Row(
@@ -902,7 +1550,7 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
                           if (_isSaving) return;
 
                           setState(() {
-                            // Sirf unsaved counter session reset hoga.
+                            // Only unsaved counter session resets.
                             _count = 0;
                           });
                         },

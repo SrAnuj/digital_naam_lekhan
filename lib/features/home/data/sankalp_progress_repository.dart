@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../../core/services/app_services.dart';
+import '../../../core/network/api_save_exception.dart';
 
 class SankalpProgressRepository {
   SankalpProgressRepository._();
@@ -66,6 +67,18 @@ class SankalpProgressRepository {
     }
   }
 
+  static void _validateCount(int count) {
+    if (count <= 0) {
+      throw Exception('Naam count must be greater than zero.');
+    }
+  }
+
+  static void _validateProgressDate(String progressDate) {
+    if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(progressDate)) {
+      throw Exception('Invalid progress date. Use YYYY-MM-DD.');
+    }
+  }
+
   // ───────────────────── TODAY SUMMARY ─────────────────────
 
   /// Fetch today's target and progress.
@@ -127,13 +140,15 @@ class SankalpProgressRepository {
     }
   }
 
-  // ───────────────────── SAVE PROGRESS ─────────────────────
+  // ───────────────────── SAVE EXISTING PROGRESS ─────────────────────
 
-  /// Save Writing or Jap Counter progress.
+  /// Existing progress method.
   ///
-  /// POST /sankalp-progress/{sankalpId}/progress
+  /// Kept for backward compatibility.
   ///
-  /// Both Writing and Jap Counter use this same method.
+  /// NOTE:
+  /// Current backend addProgress endpoint requires request_id.
+  /// Do not use this method for new Writing API requests.
   static Future<Map<String, dynamic>> saveProgress({
     required int sankalpId,
     required int count,
@@ -141,14 +156,8 @@ class SankalpProgressRepository {
   }) async {
     try {
       _validateSankalpId(sankalpId);
-
-      if (count <= 0) {
-        throw Exception('Naam count must be greater than zero.');
-      }
-
-      if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(progressDate)) {
-        throw Exception('Invalid progress date. Use YYYY-MM-DD.');
-      }
+      _validateCount(count);
+      _validateProgressDate(progressDate);
 
       final response = await AppServices.api.dio.post(
         '/sankalp-progress/$sankalpId/progress',
@@ -168,6 +177,58 @@ class SankalpProgressRepository {
       throw _handleError(
         e,
         fallback: 'Unable to save Naam progress.',
+      );
+    }
+  }
+
+  // ───────────────────── SAVE WRITING PROGRESS ─────────────────────
+
+  /// Save Writing progress with an idempotent request ID.
+  ///
+  /// POST /sankalp-progress/{sankalpId}/progress
+  static Future<Map<String, dynamic>> saveWritingProgress({
+    required int sankalpId,
+    required int count,
+    required String progressDate,
+    required String requestId,
+    Map<String, dynamic>? metadata,
+  }) async {
+    try {
+      _validateSankalpId(sankalpId);
+      _validateCount(count);
+      _validateProgressDate(progressDate);
+
+      if (requestId.trim().isEmpty) {
+        throw Exception('Invalid request ID.');
+      }
+
+      final response = await AppServices.api.dio.post(
+        '/sankalp-progress/$sankalpId/progress',
+        data: {
+          'count': count,
+          'progress_date': progressDate,
+          'request_id': requestId,
+          if (metadata != null) 'metadata': metadata,
+        },
+      );
+
+      final body = _responseMap(response.data);
+
+      return {
+        'data': body['data'],
+        'daily_target_summary': body['daily_target_summary'],
+      };
+    } catch (e) {
+      if (e is DioException) {
+        throw ApiSaveException.fromDio(
+          e,
+          fallback: 'Unable to save Naam writing progress.',
+        );
+      }
+
+      throw _handleError(
+        e,
+        fallback: 'Unable to save Naam writing progress.',
       );
     }
   }
