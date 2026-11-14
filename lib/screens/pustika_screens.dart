@@ -1,7 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:gal/gal.dart';
 
 import '../data.dart';
 import '../theme.dart';
@@ -478,38 +480,191 @@ class PurchasesScreen extends StatelessWidget {
 
 // ───────────────────────── 22. SHARE CARD ─────────────────────────
 
-class ShareCardScreen extends StatelessWidget {
+class ShareCardScreen extends StatefulWidget {
   const ShareCardScreen({super.key});
 
-  Widget _circle(
-    BuildContext context,
-    IconData icon,
-    Color color,
-    String label,
-  ) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => showDemoSnack(
-          context,
-          '$label – share sheet comes with share_plus',
+  @override
+  State<ShareCardScreen> createState() => _ShareCardScreenState();
+}
+
+class _ShareCardScreenState extends State<ShareCardScreen> {
+  final ScreenshotController _screenshotController = ScreenshotController();
+
+  bool _isBusy = false;
+
+  Widget _buildCard(Deity? d) {
+    return OrnateFrame(
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(
+          vertical: 26,
+          horizontal: 16,
+        ),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFFFF6DE),
+              Color(0xFFF4D890),
+            ],
+          ),
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 54,
-              height: 54,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: Colors.white, size: 28),
+            Text(
+              d == null ? 'नाम लेखन' : 'श्री ${d.hi}',
+              style: AppText.hindi(32),
             ),
             const SizedBox(height: 6),
             Text(
-              label,
-              style: AppText.body(11.5, w: FontWeight.w500),
+              fmt(AppState.target),
+              style: AppText.display(54),
+            ),
+            Text(
+              '${d?.en.toUpperCase() ?? 'NAAM'} NAAM\nCOMPLETED',
+              textAlign: TextAlign.center,
+              style: AppText.cinzel(19),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              AppState.name,
+              style: AppText.display(18, c: AppColors.ink),
+            ),
+            Text(
+              'Digital Naam Lekhan',
+              style: AppText.body(11, c: AppColors.muted),
+            ),
+            const SizedBox(height: 10),
+            Icon(
+              Icons.spa_rounded,
+              color: AppColors.saffron,
+              size: 36,
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Future<Uint8List> _captureCard() async {
+    final bytes = await _screenshotController.capture(
+      pixelRatio: 3,
+    );
+
+    if (bytes == null) {
+      throw Exception('Card image generate nahi ho payi.');
+    }
+
+    return bytes;
+  }
+
+  Future<void> _shareCard(String platform) async {
+    if (_isBusy) return;
+
+    setState(() => _isBusy = true);
+
+    try {
+      final bytes = await _captureCard();
+
+      final imageFile = XFile.fromData(
+        bytes,
+        mimeType: 'image/png',
+        name: 'naam_completion_card.png',
+      );
+
+      await SharePlus.instance.share(
+        ShareParams(
+          title: 'My Naam Completion Card',
+          text: 'I have completed my Naam Lekhan Sankalp! 🙏',
+          files: [imageFile],
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        showDemoSnack(
+          context,
+          'Sharing failed: $e',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isBusy = false);
+      }
+    }
+  }
+
+  Future<void> _downloadCard() async {
+    if (_isBusy) return;
+
+    setState(() => _isBusy = true);
+
+    try {
+      final bytes = await _captureCard();
+
+      await Gal.putImageBytes(
+        bytes,
+        name: 'naam_completion_card',
+        album: 'Digital Naam Lekhan',
+      );
+
+      if (mounted) {
+        showDemoSnack(
+          context,
+          'Share Card Gallery mein save ho gaya.',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showDemoSnack(
+          context,
+          'Download failed: $e',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isBusy = false);
+      }
+    }
+  }
+
+  Widget _circle(
+    IconData icon,
+    Color color,
+    String label,
+    VoidCallback onTap,
+  ) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: _isBusy ? null : onTap,
+        child: Opacity(
+          opacity: _isBusy ? 0.5 : 1,
+          child: Column(
+            children: [
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  icon,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                style: AppText.body(
+                  11.5,
+                  w: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -524,81 +679,45 @@ class ShareCardScreen extends StatelessWidget {
       body: Column(
         children: [
           const SizedBox(height: 6),
-          OrnateFrame(
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                vertical: 26,
-                horizontal: 16,
-              ),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFFFFF6DE),
-                    Color(0xFFF4D890),
-                  ],
-                ),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    d == null ? 'नाम लेखन' : 'श्री ${d.hi}',
-                    style: AppText.hindi(32),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    fmt(AppState.target),
-                    style: AppText.display(54),
-                  ),
-                  Text(
-                    '${d?.en.toUpperCase() ?? 'NAAM'} NAAM\nCOMPLETED',
-                    textAlign: TextAlign.center,
-                    style: AppText.cinzel(19),
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    AppState.name,
-                    style: AppText.display(18, c: AppColors.ink),
-                  ),
-                  Text(
-                    'Digital Naam Lekhan',
-                    style: AppText.body(11, c: AppColors.muted),
-                  ),
-                  const SizedBox(height: 10),
-                  Icon(
-                    Icons.spa_rounded,
-                    color: AppColors.saffron,
-                    size: 36,
-                  ),
-                ],
-              ),
-            ),
+          Screenshot(
+            controller: _screenshotController,
+            child: _buildCard(d),
           ),
           const SizedBox(height: 26),
           Row(
             children: [
               _circle(
-                context,
                 Icons.chat_rounded,
                 const Color(0xFF25D366),
                 'WhatsApp',
+                () => _shareCard('WhatsApp'),
               ),
               _circle(
-                context,
                 Icons.camera_alt_rounded,
                 const Color(0xFFC13584),
                 'Instagram',
+                () => _shareCard('Instagram'),
               ),
               _circle(
-                context,
                 Icons.download_rounded,
                 AppColors.maroon,
                 'Download',
+                _downloadCard,
               ),
             ],
           ),
+          if (_isBusy) ...[
+            const SizedBox(height: 20),
+            const CircularProgressIndicator(),
+            const SizedBox(height: 8),
+            Text(
+              'Please wait...',
+              style: AppText.body(
+                12,
+                c: AppColors.muted,
+              ),
+            ),
+          ],
         ],
       ),
     );
