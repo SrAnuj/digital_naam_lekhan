@@ -172,6 +172,8 @@ class SankalpProgressRepository {
       return {
         'data': body['data'],
         'daily_target_summary': body['daily_target_summary'],
+        'sankalp_summary': body['sankalp_summary'],
+        'sankalp_completed': body['sankalp_completed'] == true,
       };
     } catch (e) {
       throw _handleError(
@@ -217,6 +219,8 @@ class SankalpProgressRepository {
       return {
         'data': body['data'],
         'daily_target_summary': body['daily_target_summary'],
+        'sankalp_summary': body['sankalp_summary'],
+        'sankalp_completed': body['sankalp_completed'] == true,
       };
     } catch (e) {
       if (e is DioException) {
@@ -293,6 +297,48 @@ class SankalpProgressRepository {
       throw _handleError(
         e,
         fallback: 'Unable to load progress records.',
+      );
+    }
+  }
+
+  // ───────────────────── PROGRESS DASHBOARD ─────────────────────
+
+  /// Fetch complete progress dashboard of one Sankalp.
+  ///
+  /// GET /sankalp-progress/{sankalpId}/dashboard
+  /// Optional query parameter: month (YYYY-MM)
+
+  static Future<Map<String, dynamic>> fetchDashboard(
+    int sankalpId, {
+    String? month,
+  }) async {
+    try {
+      _validateSankalpId(sankalpId);
+
+      if (month != null &&
+          !RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(month)) {
+        throw Exception('Invalid month. Use YYYY-MM.');
+      }
+
+      final response = await AppServices.api.dio.get(
+        '/sankalp-progress/$sankalpId/dashboard',
+        queryParameters: {
+          if (month != null) 'month': month,
+        },
+      );
+
+      final body = _responseMap(response.data);
+      final data = body['data'];
+
+      if (data is! List || data.isEmpty || data.first is! Map) {
+        throw Exception('Invalid dashboard response.');
+      }
+
+      return Map<String, dynamic>.from(data.first as Map);
+    } catch (e) {
+      throw _handleError(
+        e,
+        fallback: 'Unable to load progress dashboard.',
       );
     }
   }

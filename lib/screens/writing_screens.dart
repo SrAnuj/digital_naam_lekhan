@@ -127,6 +127,33 @@ void _updateLocalProgress(
   AppState.written += savedCount;
 }
 
+bool _isSankalpCompleted(Map<String, dynamic> response) {
+  if (response['sankalp_completed'] == true) {
+    return true;
+  }
+
+  final summary = _readMap(response['sankalp_summary']);
+
+  return summary?['status']?.toString().toLowerCase() == 'completed';
+}
+
+Map<String, dynamic> _sankalpSummary(
+  Map<String, dynamic> response,
+) {
+  return _readMap(response['sankalp_summary']) ?? {};
+}
+
+void _openCompletionScreen(
+  BuildContext context,
+  Map<String, dynamic> response,
+) {
+  Navigator.pushNamed(
+    context,
+    '/sankalp-complete',
+    arguments: _sankalpSummary(response),
+  );
+}
+
 String _progressError(Object error) {
   return error.toString().replaceFirst('Exception: ', '');
 }
@@ -266,7 +293,9 @@ class _WritingScreenState extends State<WritingScreen> {
         _isSaving = false;
       });
 
-      if (_isDailyGoalCompleted()) {
+      if (_isSankalpCompleted(response)) {
+        _openCompletionScreen(context, response);
+      } else if (_isDailyGoalCompleted()) {
         Navigator.pushNamed(context, '/daily-complete');
       } else {
         showDemoSnack(context, '$count Naam saved successfully 🙏');
@@ -288,7 +317,6 @@ class _WritingScreenState extends State<WritingScreen> {
 
           if (!mounted) return;
 
-          // Queue save hone ke baad local progress sirf ek baar update.
           _updateLocalProgress({}, count);
 
           setState(() {
@@ -296,14 +324,10 @@ class _WritingScreenState extends State<WritingScreen> {
             _isSaving = false;
           });
 
-          if (_isDailyGoalCompleted()) {
-            Navigator.pushNamed(context, '/daily-complete');
-          } else {
-            showDemoSnack(
-              context,
-              '$count Naam saved offline. Pending sync.',
-            );
-          }
+          showDemoSnack(
+            context,
+            '$count Naam saved offline. Pending sync.',
+          );
 
           return;
         } catch (queueError) {
@@ -317,6 +341,7 @@ class _WritingScreenState extends State<WritingScreen> {
             context,
             'Offline save failed: ${_progressError(queueError)}',
           );
+
           return;
         }
       }
@@ -799,6 +824,159 @@ class JapCounterScreen extends StatefulWidget {
   State<JapCounterScreen> createState() => _JapCounterScreenState();
 }
 
+class SankalpCompletionScreen extends StatelessWidget {
+  const SankalpCompletionScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final arguments = ModalRoute.of(context)?.settings.arguments;
+
+    final summary = arguments is Map
+        ? Map<String, dynamic>.from(arguments)
+        : <String, dynamic>{};
+
+    final target = _readInt(summary['target_count']) ?? AppState.target;
+    final completed = _readInt(summary['completed_count']) ?? AppState.written;
+
+    final completedAt = summary['completed_at']?.toString();
+    final deityName = AppState.deity?.hi ?? 'Naam';
+
+    String completionDate = 'Today';
+    if (completedAt != null && completedAt.isNotEmpty) {
+      final parsedDate = DateTime.tryParse(completedAt);
+      if (parsedDate != null) {
+        completionDate = '${parsedDate.day.toString().padLeft(2, '0')}-'
+            '${parsedDate.month.toString().padLeft(2, '0')}-'
+            '${parsedDate.year}';
+      }
+    }
+
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFF2D58C),
+              Color(0xFFFFF1CC),
+              Color(0xFFF2D58C),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 42,
+                  color: AppColors.saffron,
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'ॐ',
+                  style: AppText.hindi(
+                    54,
+                    c: AppColors.maroon,
+                    w: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Sankalp Completed!',
+                  textAlign: TextAlign.center,
+                  style: AppText.display(
+                    30,
+                    c: AppColors.maroon,
+                    w: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'आपका $deityName नाम संकल्प पूर्ण हुआ।',
+                  textAlign: TextAlign.center,
+                  style: AppText.hindi(
+                    20,
+                    c: AppColors.maroon,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Your devotion and dedication have completed this Sankalp.',
+                  textAlign: TextAlign.center,
+                  style: AppText.body(
+                    14,
+                    c: AppColors.muted,
+                  ),
+                ),
+                const SizedBox(height: 30),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.75),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.gold),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Total Naam Completed',
+                        style: AppText.body(
+                          13,
+                          c: AppColors.muted,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${fmt(completed)} / ${fmt(target)}',
+                        style: AppText.display(
+                          30,
+                          c: AppColors.maroon,
+                          w: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Icon(
+                        Icons.check_circle_rounded,
+                        color: AppColors.success,
+                        size: 30,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Completed on $completionDate',
+                        style: AppText.body(
+                          12,
+                          c: AppColors.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 32),
+                PrimaryButton(
+                  label: 'Continue to Home',
+                  onTap: () {
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      '/home',
+                      (route) => false,
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _JapCounterScreenState extends State<JapCounterScreen> {
   int _count = 0;
   bool _isSaving = false;
@@ -851,7 +1029,7 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
     final activityDate = _todayDate();
 
     try {
-      await JapSessionRepository.saveSession(
+      final result = await JapSessionRepository.saveSession(
         sankalpId: sankalpId,
         count: savedCount,
         requestId: requestId,
@@ -868,7 +1046,14 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
         _isSaving = false;
       });
 
-      if (_isDailyGoalCompleted()) {
+      final completionResponse = {
+        'sankalp_summary': result.sankalpSummary,
+        'sankalp_completed': result.sankalpCompleted,
+      };
+
+      if (_isSankalpCompleted(completionResponse)) {
+        _openCompletionScreen(context, completionResponse);
+      } else if (_isDailyGoalCompleted()) {
         Navigator.pushNamed(context, '/daily-complete');
       } else {
         showDemoSnack(
@@ -895,7 +1080,6 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
 
           if (!mounted) return;
 
-          // Local combined progress sirf ek baar update hoga.
           AppState.todayWritten += savedCount;
           AppState.written += savedCount;
 
@@ -904,14 +1088,10 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
             _isSaving = false;
           });
 
-          if (_isDailyGoalCompleted()) {
-            Navigator.pushNamed(context, '/daily-complete');
-          } else {
-            showDemoSnack(
-              context,
-              '$savedCount Jap saved offline. Pending sync.',
-            );
-          }
+          showDemoSnack(
+            context,
+            '$savedCount Jap saved offline. Pending sync.',
+          );
 
           return;
         } catch (queueError) {
@@ -925,6 +1105,7 @@ class _JapCounterScreenState extends State<JapCounterScreen> {
             context,
             'Offline save failed: ${_progressError(queueError)}',
           );
+
           return;
         }
       }

@@ -24,12 +24,16 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
   int _target = 0;
   double _dailyAverage = 0;
 
+  int _currentStreak = 0;
+  int _longestStreak = 0;
+  int _totalActiveDays = 0;
+
   DateTime? _startedAt;
 
-  // Daily Target history fetched from API.
   List<Map<String, dynamic>> _dailyTargetHistory = [];
 
   final Map<String, int> _progressByDate = {};
+  final Map<String, Map<String, dynamic>> _calendarDetailsByDate = {};
 
   DateTime _month = DateTime.now();
   DateTime _selectedDate = DateTime.now();
@@ -63,9 +67,13 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
     return '$year-$month-$day';
   }
 
-  int get _selectedDayCount {
-    return _progressByDate[_dateKey(_selectedDate)] ?? 0;
+  int _toInt(dynamic value) {
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
+
+  // int get _selectedDayCount {
+  //   return _progressByDate[_dateKey(_selectedDate)] ?? 0;
+  // }
 
   Future<void> _loadProgress() async {
     final sankalpId = AppState.createdSankalpId;
@@ -86,74 +94,73 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
     });
 
     try {
-      // Fetch selected Sankalp details from My Sankalps API.
-      final sankalps = await UserSankalpRepository.fetchMySankalps();
-
-      final matchingSankalp = sankalps.firstWhere(
-        (item) => int.tryParse(item['id'].toString()) == sankalpId,
-        orElse: () => <String, dynamic>{},
+      final dashboard = await SankalpProgressRepository.fetchDashboard(
+        sankalpId,
+        month: '${_month.year}-${_month.month.toString().padLeft(2, '0')}',
       );
 
-      if (matchingSankalp.isEmpty) {
-        throw Exception('Sankalp not found in your Sankalp list.');
-      }
+      final sankalp = Map<String, dynamic>.from(
+        dashboard['sankalp'] ?? {},
+      );
 
-      final totalWritten =
-          int.tryParse(matchingSankalp['completed_count']?.toString() ?? '') ??
-              0;
+      final lifetime = Map<String, dynamic>.from(
+        dashboard['lifetime_summary'] ?? {},
+      );
 
-      final totalTarget =
-          int.tryParse(matchingSankalp['target_count']?.toString() ?? '') ?? 0;
+      final streak = Map<String, dynamic>.from(
+        dashboard['streak'] ?? {},
+      );
+
+      final calendar = Map<String, dynamic>.from(
+        dashboard['calendar'] ?? {},
+      );
+
+      final totalWritten = _toInt(lifetime['total_completed']);
+      final totalTarget = _toInt(sankalp['target_count']);
 
       final startedAt = DateTime.tryParse(
-        matchingSankalp['started_at']?.toString() ?? '',
+        sankalp['started_at']?.toString() ?? '',
       );
 
-      // Fetch daily progress records for selected Sankalp.
-      final records =
-          await SankalpProgressRepository.fetchProgressHistory(sankalpId);
-
-      // Fetch Daily Target history for selected Sankalp.
-      final dailyTargetHistory =
-          await SankalpProgressRepository.fetchDailyTargetHistory(sankalpId);
+      final currentStreak = _toInt(streak['current_streak']);
+      final longestStreak = _toInt(streak['longest_streak']);
+      final totalActiveDays = _toInt(streak['total_active_days']);
 
       final Map<String, int> progress = {};
+      final Map<String, Map<String, dynamic>> calendarDetails = {};
 
       var dailyTotal = 0;
-      final activeDates = <String>{};
+      var activeDates = 0;
 
-      for (final record in records) {
-        final date = record['progress_date']?.toString().trim();
+      final days = calendar['days'];
 
-        if (date == null || date.isEmpty) continue;
+      if (days is List) {
+        for (final item in days) {
+          if (item is! Map) continue;
 
-        final count = int.tryParse(record['count']?.toString() ?? '') ?? 0;
+          final date = item['date']?.toString() ?? '';
+          if (date.isEmpty) continue;
 
-        progress[date] = (progress[date] ?? 0) + count;
+          final details = Map<String, dynamic>.from(item);
+          final count = _toInt(details['total_count']);
 
-        dailyTotal += count;
+          progress[date] = count;
+          calendarDetails[date] = details;
 
-        if (count > 0) {
-          activeDates.add(date);
+          if (count > 0) {
+            dailyTotal += count;
+            activeDates++;
+          }
         }
       }
 
-      final average =
-          activeDates.isEmpty ? 0.0 : dailyTotal / activeDates.length;
+      final average = activeDates > 0 ? dailyTotal / activeDates : 0.0;
 
-      DateTime? latestDate;
-
-      if (progress.isNotEmpty) {
-        final availableDates = progress.keys
-            .map((date) => DateTime.tryParse(date))
-            .whereType<DateTime>()
-            .toList();
-
-        if (availableDates.isNotEmpty) {
-          availableDates.sort((a, b) => a.compareTo(b));
-          latestDate = availableDates.last;
-        }
-      }
+      // Existing Daily Target history functionality preserved.
+      final dailyTargetHistory =
+          await SankalpProgressRepository.fetchDailyTargetHistory(
+        sankalpId,
+      );
 
       if (!mounted) return;
 
@@ -163,21 +170,24 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
         _startedAt = startedAt;
         _dailyAverage = average;
 
+        _currentStreak = currentStreak;
+        _longestStreak = longestStreak;
+        _totalActiveDays = totalActiveDays;
+
         _dailyTargetHistory = dailyTargetHistory;
 
         _progressByDate
           ..clear()
           ..addAll(progress);
 
-        if (latestDate != null) {
-          _selectedDate = latestDate;
-          _month = DateTime(latestDate.year, latestDate.month);
-        }
-
-        _isLoading = false;
+        _calendarDetailsByDate
+          ..clear()
+          ..addAll(calendarDetails);
 
         AppState.written = totalWritten;
         AppState.target = totalTarget;
+
+        _isLoading = false;
       });
     } catch (e) {
       if (!mounted) return;
@@ -189,21 +199,31 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
     }
   }
 
-  void _changeMonth(int amount) {
+  Future<void> _changeMonth(int amount) async {
+    final newMonth = DateTime(
+      _month.year,
+      _month.month + amount,
+    );
+
+    final daysInMonth = DateTime(
+      newMonth.year,
+      newMonth.month + 1,
+      0,
+    ).day;
+
+    final day =
+        _selectedDate.day > daysInMonth ? daysInMonth : _selectedDate.day;
+
     setState(() {
-      _month = DateTime(_month.year, _month.month + amount);
-
-      final daysInMonth = DateTime(
-        _month.year,
-        _month.month + 1,
-        0,
-      ).day;
-
-      final day =
-          _selectedDate.day > daysInMonth ? daysInMonth : _selectedDate.day;
-
-      _selectedDate = DateTime(_month.year, _month.month, day);
+      _month = newMonth;
+      _selectedDate = DateTime(
+        newMonth.year,
+        newMonth.month,
+        day,
+      );
     });
+
+    await _loadProgress();
   }
 
   String _startedDateText() {
@@ -216,12 +236,83 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
         '${date.year}';
   }
 
+  Widget _selectedDateBreakdown() {
+    final details = _calendarDetailsByDate[_dateKey(_selectedDate)] ?? {};
+
+    final writingCount = _toInt(details['writing_count']);
+    final japCount = _toInt(details['jap_count']);
+    final totalCount = _toInt(details['total_count']);
+    final dailyTarget = _toInt(details['daily_target']);
+    final remainingCount = _toInt(details['remaining_count']);
+
+    final targetAchieved = details['target_achieved'] == true;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _detailRow('Writing Count', fmt(writingCount)),
+        _detailRow('Jap Count', fmt(japCount)),
+        const Divider(height: 18, color: AppColors.line),
+        _detailRow('Total Completed', fmt(totalCount)),
+        _detailRow('Daily Target', fmt(dailyTarget)),
+        _detailRow('Remaining', fmt(remainingCount)),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Icon(
+              targetAchieved
+                  ? Icons.check_circle_rounded
+                  : Icons.info_outline_rounded,
+              size: 17,
+              color: targetAchieved ? AppColors.success : AppColors.muted,
+            ),
+            const SizedBox(width: 7),
+            Text(
+              targetAchieved ? 'Target Achieved' : 'Target Not Achieved',
+              style: AppText.body(
+                12,
+                c: targetAchieved ? AppColors.success : AppColors.muted,
+                w: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: AppText.body(12.5, c: AppColors.muted),
+          ),
+          Text(
+            value,
+            style: AppText.body(
+              13,
+              c: AppColors.ink,
+              w: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final deity = AppState.deity;
 
     final target = _target > 0 ? _target : 0;
-    final safeWritten = _written.clamp(0, target > 0 ? target : _written);
+    final safeWritten = _written.clamp(
+      0,
+      target > 0 ? target : _written,
+    );
 
     final pct =
         target > 0 ? (safeWritten / target).clamp(0.0, 1.0).toDouble() : 0.0;
@@ -250,7 +341,10 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
                       Text(
                         '${fmt(_written)} / ${fmt(target)}',
                         textAlign: TextAlign.center,
-                        style: AppText.body(16, w: FontWeight.w600),
+                        style: AppText.body(
+                          16,
+                          w: FontWeight.w600,
+                        ),
                       ),
                       const SizedBox(height: 10),
                       Row(
@@ -273,9 +367,6 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
-
-                      // StatBox already returns Expanded internally.
-                      // Do not wrap it in another Expanded.
                       Row(
                         children: [
                           StatBox(
@@ -284,7 +375,7 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
                           ),
                           StatBox(
                             label: 'Streak',
-                            value: '—',
+                            value: '$_currentStreak Days',
                           ),
                           StatBox(
                             label: 'Daily Avg',
@@ -292,7 +383,19 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
                           ),
                         ],
                       ),
-
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          StatBox(
+                            label: 'Longest Streak',
+                            value: '$_longestStreak Days',
+                          ),
+                          StatBox(
+                            label: 'Active Days',
+                            value: '$_totalActiveDays',
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 22),
                       Align(
                         alignment: Alignment.centerLeft,
@@ -321,8 +424,9 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
                           children: [
                             if (_dailyTargetHistory.isEmpty)
                               Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 16),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
                                 child: Text(
                                   'No daily targets set yet.',
                                   style: AppText.body(
@@ -349,7 +453,10 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
                       Text(
                         'Pull down to refresh your progress.',
                         textAlign: TextAlign.center,
-                        style: AppText.body(11, c: AppColors.muted),
+                        style: AppText.body(
+                          11,
+                          c: AppColors.muted,
+                        ),
                       ),
                       const SizedBox(height: 20),
                     ],
@@ -419,7 +526,10 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
                   child: Center(
                     child: Text(
                       weekday,
-                      style: AppText.body(10.5, c: AppColors.muted),
+                      style: AppText.body(
+                        10.5,
+                        c: AppColors.muted,
+                      ),
                     ),
                   ),
                 ),
@@ -456,7 +566,10 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
               const SizedBox(width: 6),
               Text(
                 'Naam completed',
-                style: AppText.body(10.5, c: AppColors.muted),
+                style: AppText.body(
+                  10.5,
+                  c: AppColors.muted,
+                ),
               ),
             ],
           ),
@@ -467,15 +580,13 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
             '${_selectedDate.day} '
             '${_monthNames[_selectedDate.month - 1]} '
             '${_selectedDate.year}',
-            style: AppText.body(14, w: FontWeight.w600),
+            style: AppText.body(
+              14,
+              w: FontWeight.w600,
+            ),
           ),
           const SizedBox(height: 5),
-          Text(
-            _selectedDayCount > 0
-                ? '${fmt(_selectedDayCount)} Naam completed'
-                : 'No Naam written',
-            style: AppText.body(13, c: AppColors.muted),
-          ),
+          _selectedDateBreakdown(),
         ],
       ),
     );
@@ -541,10 +652,8 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
     );
   }
 
-  // Display one record for each saved Daily Target.
   Widget _milestoneItem(Map<String, dynamic> milestone) {
-    final targetCount =
-        int.tryParse(milestone['target_count']?.toString() ?? '') ?? 0;
+    final targetCount = _toInt(milestone['target_count']);
 
     final effectiveFrom = milestone['effective_from']?.toString() ?? '';
 
@@ -617,7 +726,10 @@ class _ProgressDashboardScreenState extends State<ProgressDashboardScreen> {
             Text(
               _error ?? 'Unable to load progress.',
               textAlign: TextAlign.center,
-              style: AppText.body(14, c: AppColors.muted),
+              style: AppText.body(
+                14,
+                c: AppColors.muted,
+              ),
             ),
             const SizedBox(height: 16),
             PrimaryButton(

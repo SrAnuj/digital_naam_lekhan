@@ -1,9 +1,21 @@
 import 'package:dio/dio.dart';
 
 import '../../../core/services/app_services.dart';
+import '../../../core/network/api_save_exception.dart';
 import 'models/jap_session_model.dart';
 import 'models/jap_session_summary_model.dart';
-import '../../../core/network/api_save_exception.dart';
+
+class JapSessionSaveResult {
+  final JapSessionModel session;
+  final Map<String, dynamic> sankalpSummary;
+  final bool sankalpCompleted;
+
+  const JapSessionSaveResult({
+    required this.session,
+    required this.sankalpSummary,
+    required this.sankalpCompleted,
+  });
+}
 
 class JapSessionRepository {
   JapSessionRepository._();
@@ -68,9 +80,10 @@ class JapSessionRepository {
   }
 
   /// Save one Jap session.
-  ///
   /// POST /jap-sessions
-  static Future<JapSessionModel> saveSession({
+  ///
+  /// Returns session data and Sankalp completion status.
+  static Future<JapSessionSaveResult> saveSession({
     required int sankalpId,
     required int count,
     required String requestId,
@@ -96,7 +109,7 @@ class JapSessionRepository {
         throw Exception('Invalid activity date. Use YYYY-MM-DD.');
       }
 
-      if (requestId.isEmpty) {
+      if (requestId.trim().isEmpty) {
         throw Exception('Request ID is required.');
       }
 
@@ -123,25 +136,31 @@ class JapSessionRepository {
 
       final body = _responseMap(response.data);
       final data = _toMap(body['data']);
+      final summaryData = body['sankalp_summary'];
 
-      return JapSessionModel.fromJson(data);
-    } catch (e) {
-      if (e is DioException) {
+      return JapSessionSaveResult(
+        session: JapSessionModel.fromJson(data),
+        sankalpSummary: summaryData is Map
+            ? Map<String, dynamic>.from(summaryData)
+            : <String, dynamic>{},
+        sankalpCompleted: body['sankalp_completed'] == true,
+      );
+    } catch (error) {
+      if (error is DioException) {
         throw ApiSaveException.fromDio(
-          e,
+          error,
           fallback: 'Unable to save Jap session.',
         );
       }
 
       throw _handleError(
-        e,
+        error,
         fallback: 'Unable to save Jap session.',
       );
     }
   }
 
   /// Fetch Jap session history.
-  ///
   /// GET /jap-sessions
   static Future<List<JapSessionModel>> fetchHistory({
     int? sankalpId,
@@ -181,16 +200,15 @@ class JapSessionRepository {
             ),
           )
           .toList();
-    } catch (e) {
+    } catch (error) {
       throw _handleError(
-        e,
+        error,
         fallback: 'Unable to load Jap session history.',
       );
     }
   }
 
   /// Fetch Jap summary.
-  ///
   /// GET /jap-sessions/summary
   static Future<List<JapSessionSummaryModel>> fetchSummary({
     int? sankalpId,
@@ -222,9 +240,9 @@ class JapSessionRepository {
             ),
           )
           .toList();
-    } catch (e) {
+    } catch (error) {
       throw _handleError(
-        e,
+        error,
         fallback: 'Unable to load Jap summary.',
       );
     }

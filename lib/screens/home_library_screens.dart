@@ -384,6 +384,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+// ───────────────────── TEST SANKALP COMPLETION ─────────────────────
+
   // ───────────────────── BUILD ─────────────────────
 
   @override
@@ -716,6 +718,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
 
                             const SizedBox(height: 14),
+
+                            // Jap Summary Card.
 
                             // Jap Summary Card.
 

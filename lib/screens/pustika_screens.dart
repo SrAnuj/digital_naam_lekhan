@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:screenshot/screenshot.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../data.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'sankalp_setup_screens.dart' show MiniPage;
-
 // ───────────────────────── 18. COMPLETION SCREEN ─────────────────────────
 
 class CompletionScreen extends StatelessWidget {
@@ -666,7 +668,6 @@ class ExampleWritingPageBody extends StatelessWidget {
   }
 }
 
-
 class ExampleWritingPageScreen extends StatefulWidget {
   const ExampleWritingPageScreen({super.key});
 
@@ -675,8 +676,7 @@ class ExampleWritingPageScreen extends StatefulWidget {
       _ExampleWritingPageScreenState();
 }
 
-class _ExampleWritingPageScreenState
-    extends State<ExampleWritingPageScreen> {
+class _ExampleWritingPageScreenState extends State<ExampleWritingPageScreen> {
   int _page = 1;
 
   static const int _totalPages = 5;

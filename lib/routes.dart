@@ -63,6 +63,12 @@ final List<ScreenEntry> screenList = [
       23, 'Profile / Settings', '/profile', (_) => const ProfileScreen()),
   ScreenEntry(26, 'Edit Profile', '/profile-update',
       (_) => const ProfileUpdateScreen()),
+  ScreenEntry(
+    27,
+    'Sankalp Completion',
+    '/sankalp-complete',
+    (_) => const SankalpCompletionScreen(),
+  ),
   ScreenEntry(24, 'Family Sankalp (Premium)', '/family',
       (_) => const FamilySankalpScreen()),
   ScreenEntry(25, 'Example Writing Page', '/example-page',
@@ -87,15 +93,29 @@ final Map<String, WidgetBuilder> appRoutes = {
 };
 
 Route<dynamic>? onGenerateRoute(RouteSettings settings) {
+  debugPrint('ROUTE REQUESTED: ${settings.name}');
+  debugPrint(
+      'SANKALP ROUTE EXISTS: ${appRoutes.containsKey('/sankalp-complete')}');
+  debugPrint('ALL ROUTES: ${appRoutes.keys.toList()}');
+
   final builder = appRoutes[settings.name];
 
-  if (builder == null) return null;
+  if (builder == null) {
+    debugPrint('ROUTE NOT FOUND: ${settings.name}');
+    return null;
+  }
 
-  return PageRouteBuilder<void>(
+  return PageRouteBuilder<dynamic>(
     settings: settings,
     transitionDuration: const Duration(milliseconds: 260),
-    pageBuilder: (context, _, __) => builder(context),
-    transitionsBuilder: (context, anim, _, child) =>
-        FadeTransition(opacity: anim, child: child),
+    pageBuilder: (context, animation, secondaryAnimation) {
+      return builder(context);
+    },
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      return FadeTransition(
+        opacity: animation,
+        child: child,
+      );
+    },
   );
 }

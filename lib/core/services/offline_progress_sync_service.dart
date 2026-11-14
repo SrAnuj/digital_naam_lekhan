@@ -7,6 +7,7 @@ import '../../features/home/data/sankalp_progress_repository.dart';
 import '../../features/jap/data/jap_session_repository.dart';
 import 'app_services.dart';
 import 'offline_progress_service.dart';
+import 'notification_navigation_service.dart';
 
 class OfflineProgressSyncService with WidgetsBindingObserver {
   OfflineProgressSyncService._();
@@ -24,6 +25,7 @@ class OfflineProgressSyncService with WidgetsBindingObserver {
 
   bool _isInitialized = false;
   bool _isSyncing = false;
+  bool _isShowingCompletionScreen = false;
 
   /// Initialize automatic offline synchronization.
   /// Call once after AppServices.init().
@@ -34,8 +36,6 @@ class OfflineProgressSyncService with WidgetsBindingObserver {
 
     WidgetsBinding.instance.addObserver(this);
 
-    // Listen for internet connectivity changes.
-    // Do not wrap listen() in unawaited().
     _connectivitySubscription = _offlineService.onConnectivityChanged.listen(
       (results) {
         final hasNetwork = results.any(
@@ -110,16 +110,18 @@ class OfflineProgressSyncService with WidgetsBindingObserver {
         final payload = Map<String, dynamic>.from(rawPayload);
 
         try {
+          late final Map<String, dynamic> response;
+
           switch (action) {
             case writingProgressAction:
-              await _syncWritingProgress(
+              response = await _syncWritingProgress(
                 payload: payload,
                 requestId: requestId,
               );
               break;
 
             case japSessionAction:
-              await _syncJapSession(
+              response = await _syncJapSession(
                 payload: payload,
                 requestId: requestId,
               );
@@ -130,11 +132,15 @@ class OfflineProgressSyncService with WidgetsBindingObserver {
               continue;
           }
 
+          // Remove only after successful API synchronization.
           await _offlineService.removePendingItem(requestId);
 
           syncedCount++;
 
           debugPrint('Offline item synced: $requestId');
+
+          // Check whether this sync completed the Sankalp.
+          await _handleSankalpCompletion(response);
         } catch (error, stackTrace) {
           await _offlineService.incrementAttempts(requestId);
 
@@ -162,11 +168,11 @@ class OfflineProgressSyncService with WidgetsBindingObserver {
   }
 
   /// Sync Naam Writing progress.
-  Future<void> _syncWritingProgress({
+  Future<Map<String, dynamic>> _syncWritingProgress({
     required Map<String, dynamic> payload,
     required String requestId,
   }) async {
-    await SankalpProgressRepository.saveWritingProgress(
+    return await SankalpProgressRepository.saveWritingProgress(
       sankalpId: _requiredInt(payload, 'sankalp_id'),
       count: _requiredInt(payload, 'count'),
       progressDate: _requiredString(payload, 'progress_date'),
@@ -176,11 +182,11 @@ class OfflineProgressSyncService with WidgetsBindingObserver {
   }
 
   /// Sync Jap Counter session.
-  Future<void> _syncJapSession({
+  Future<Map<String, dynamic>> _syncJapSession({
     required Map<String, dynamic> payload,
     required String requestId,
   }) async {
-    await JapSessionRepository.saveSession(
+    final result = await JapSessionRepository.saveSession(
       sankalpId: _requiredInt(payload, 'sankalp_id'),
       count: _requiredInt(payload, 'count'),
       requestId: requestId,
@@ -191,6 +197,53 @@ class OfflineProgressSyncService with WidgetsBindingObserver {
       durationSeconds: _optionalInt(payload['duration_seconds']) ?? 0,
       metadata: _optionalMap(payload['metadata']),
     );
+
+    return {
+      'sankalp_summary': result.sankalpSummary,
+      'sankalp_completed': result.sankalpCompleted,
+    };
+  }
+
+  /// Open Sankalp completion screen after successful offline sync.
+  Future<void> _handleSankalpCompletion(
+    Map<String, dynamic> response,
+  ) async {
+    final rawSummary = response['sankalp_summary'];
+
+    final isCompleted = response['sankalp_completed'] == true ||
+        (rawSummary is Map &&
+            rawSummary['status']?.toString().toLowerCase() == 'completed');
+
+    if (!isCompleted || _isShowingCompletionScreen) {
+      return;
+    }
+
+    // Wait for the first app frame if sync starts before runApp().
+    if (NotificationNavigationService.navigatorKey.currentState == null) {
+      await WidgetsBinding.instance.endOfFrame;
+    }
+
+    final navigator = NotificationNavigationService.navigatorKey.currentState;
+
+    if (navigator == null) {
+      debugPrint('Completion navigation unavailable.');
+      return;
+    }
+
+    final summary = rawSummary is Map
+        ? Map<String, dynamic>.from(rawSummary)
+        : <String, dynamic>{};
+
+    _isShowingCompletionScreen = true;
+
+    try {
+      await navigator.pushNamed(
+        '/sankalp-complete',
+        arguments: summary,
+      );
+    } finally {
+      _isShowingCompletionScreen = false;
+    }
   }
 
   int _requiredInt(
