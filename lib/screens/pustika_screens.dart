@@ -155,7 +155,11 @@ class _DigitalPustikaPreviewScreenState
       case 2:
         return AspectRatio(
           aspectRatio: 0.72,
-          child: ExampleWritingPageBody(deity: d, page: 12),
+          child: ExampleWritingPageBody(
+            deity: d,
+            page: 1,
+            totalNaam: AppState.target,
+          ),
         );
 
       default:
@@ -577,7 +581,14 @@ class _ShareCardScreenState extends State<ShareCardScreen> {
       await SharePlus.instance.share(
         ShareParams(
           title: 'My Naam Completion Card',
-          text: 'I have completed my Naam Lekhan Sankalp! 🙏',
+          text: '''
+          I have completed my Naam Lekhan Sankalp! 🙏
+
+          Start your own Naam Lekhan journey with NaamVriddhi.
+
+          📲 Download NaamVriddhi App:
+          https://play.google.com/store/apps/details?id=YOUR_PACKAGE_NAME
+          ''',
           files: [imageFile],
         ),
       );
@@ -729,15 +740,27 @@ class _ShareCardScreenState extends State<ShareCardScreen> {
 class ExampleWritingPageBody extends StatelessWidget {
   final Deity deity;
   final int page;
+  final int? totalNaam;
 
   const ExampleWritingPageBody({
     super.key,
     required this.deity,
     required this.page,
+    this.totalNaam,
   });
+
+  static const int _naamPerPage = 36;
 
   @override
   Widget build(BuildContext context) {
+    final target = totalNaam ?? AppState.target;
+    final safeTarget = target > 0 ? target : 0;
+    final totalPages = safeTarget == 0 ? 1 : (safeTarget / _naamPerPage).ceil();
+
+    final startIndex = (page - 1) * _naamPerPage;
+    final remaining = safeTarget - startIndex;
+    final naamOnPage = remaining <= 0 ? 0 : remaining.clamp(0, _naamPerPage);
+
     return OrnateFrame(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
@@ -749,35 +772,32 @@ class ExampleWritingPageBody extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Expanded(
-              child: Column(
-                children: [
-                  for (var r = 0; r < 9; r++)
-                    Expanded(
-                      child: Row(
-                        children: [
-                          for (var c = 0; c < 4; c++)
-                            Expanded(
-                              child: Center(
-                                child: FittedBox(
-                                  child: Text(
-                                    deity.hi,
-                                    style: AppText.hindi(
-                                      14,
-                                      c: AppColors.ink,
-                                      w: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
+              child: GridView.builder(
+                physics: const ClampingScrollPhysics(),
+                shrinkWrap: false,
+                itemCount: naamOnPage,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  childAspectRatio: 1.5,
+                ),
+                itemBuilder: (context, index) {
+                  return Center(
+                    child: FittedBox(
+                      child: Text(
+                        deity.hi,
+                        style: AppText.hindi(
+                          14,
+                          c: AppColors.ink,
+                          w: FontWeight.w500,
+                        ),
                       ),
                     ),
-                ],
+                  );
+                },
               ),
             ),
             Text(
-              'Page $page / 250',
+              'Page $page / $totalPages',
               style: AppText.body(9.5, c: AppColors.muted),
             ),
           ],
@@ -798,7 +818,12 @@ class ExampleWritingPageScreen extends StatefulWidget {
 class _ExampleWritingPageScreenState extends State<ExampleWritingPageScreen> {
   int _page = 1;
 
-  static const int _totalPages = 5;
+  int get _totalPages {
+    final target = AppState.target;
+    if (target <= 0) return 1;
+
+    return (target + 35) ~/ 36;
+  }
 
   void _previousPage() {
     if (_page <= 1) return;
@@ -832,6 +857,7 @@ class _ExampleWritingPageScreenState extends State<ExampleWritingPageScreen> {
                   child: ExampleWritingPageBody(
                     deity: d,
                     page: _page,
+                    totalNaam: AppState.target,
                   ),
                 ),
                 const SizedBox(height: 12),
